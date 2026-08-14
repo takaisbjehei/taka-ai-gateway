@@ -107,7 +107,7 @@ export default function TakaPortal() {
     {
       id: 'welcome-msg',
       role: 'assistant',
-      content: "Hello! I am **Taka AI**, powered by our real-time neural network and live autonomous search engine.\n\nYou can ask me complex technical questions, request code, or enable the **🔍 Search Web** button to get real-time grounded intelligence from across the internet!",
+      content: "Welcome. I am **Taka AI**, the autonomous super-intelligence system conceived and engineered by **Takadori**.\n\nPowered by our multi-cluster neural matrix, hypersonic 120B reasoning cores, and live orbital web reconnaissance. What breakthrough are we building today?",
       model: 'taka-search-v1',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     }
@@ -500,9 +500,10 @@ export async function POST(req: Request) {
         <div className="flex items-center gap-3">
           <div 
             onClick={() => setMainView('chat')}
-            className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-inner cursor-pointer"
+            className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500/20 via-blue-600/20 to-amber-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 shadow-lg cursor-pointer hover:border-cyan-400 transition-all group"
+            title="Arc Neural Core"
           >
-            <Sparkles className="w-5 h-5" />
+            <Sparkles className="w-5 h-5 group-hover:rotate-12 transition-transform text-cyan-400" />
           </div>
           <div>
             <div className="flex items-center gap-2">
@@ -512,11 +513,12 @@ export async function POST(req: Request) {
               >
                 Taka AI
               </span>
-              <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-800/70 text-cyan-400 shadow-sm">
-                Neural Cloud
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-cyan-950/90 border border-cyan-700/80 text-cyan-300 shadow-sm flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                by Takadori
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 hidden sm:block">Autonomous Live Web Search & Multi-Model Intelligence</p>
+            <p className="text-[11px] text-slate-400 hidden sm:block">Autonomous Arc Super-Intelligence & Live Web Reconnaissance</p>
           </div>
         </div>
 
@@ -733,70 +735,68 @@ export async function POST(req: Request) {
                 )}
               </div>
             ))}
-            <div ref={chatBottomRef} />
-          </div>
-
-          {/* Quick Starter Suggestions */}
+            <div ref={chatBottomR          {/* Quick Starter Suggestions */}
           {messages.length <= 2 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 pt-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 pt-2">
               <button
                 onClick={() => {
                   setIsSearchMode(true);
-                  handleSendMessage('What are today\'s latest breakthrough developments in quantum computing?');
+                  handleSendMessage('Perform global live reconnaissance on latest fusion energy breakthroughs this month.');
                 }}
-                className="p-3 rounded-xl bg-slate-950/80 hover:bg-slate-900 border border-slate-800 text-left text-xs text-slate-300 transition-all hover:border-amber-500/40 group"
+                className="p-3.5 rounded-xl bg-slate-950/80 hover:bg-slate-900 border border-slate-800 text-left text-xs text-slate-300 transition-all hover:border-amber-500/50 hover:shadow-lg group"
               >
-                <div className="text-amber-400 font-semibold flex items-center gap-1 mb-1">
-                  <Search className="w-3 h-3" />
-                  Live Web Search
+                <div className="text-amber-400 font-semibold flex items-center gap-1.5 mb-1">
+                  <Search className="w-3.5 h-3.5" />
+                  Live Web Reconnaissance
                 </div>
-                <div className="text-slate-400 line-clamp-2">Latest quantum computing breakthroughs today</div>
+                <div className="text-slate-400 text-[11px] leading-snug">Global live research on fusion energy & clean power</div>
               </button>
 
               <button
                 onClick={() => {
                   setIsSearchMode(false);
                   setSelectedModel('taka-max-120b');
-                  handleSendMessage('Write a full production Next.js API route with rate-limiting and streaming.');
+                  handleSendMessage('Architect a complete high-performance distributed microservice engine in Rust with Tokio.');
                 }}
-                className="p-3 rounded-xl bg-slate-950/80 hover:bg-slate-900 border border-slate-800 text-left text-xs text-slate-300 transition-all hover:border-cyan-500/40 group"
+                className="p-3.5 rounded-xl bg-slate-950/80 hover:bg-slate-900 border border-slate-800 text-left text-xs text-slate-300 transition-all hover:border-cyan-500/50 hover:shadow-lg group"
               >
-                <div className="text-cyan-400 font-semibold flex items-center gap-1 mb-1">
-                  <Code className="w-3 h-3" />
-                  120B Fullstack Code
+                <div className="text-cyan-400 font-semibold flex items-center gap-1.5 mb-1">
+                  <Code className="w-3.5 h-3.5" />
+                  120B Systems Architecture
                 </div>
-                <div className="text-slate-400 line-clamp-2">Production Next.js API route with streaming</div>
+                <div className="text-slate-400 text-[11px] leading-snug">High-performance distributed engine in Rust</div>
               </button>
 
               <button
                 onClick={() => {
                   setIsSearchMode(true);
-                  handleSendMessage('What is the current stock market summary and tech earnings this week?');
+                  handleSendMessage('Search global tech financial markets, semiconductor earnings, and AI infrastructure investments.');
                 }}
-                className="p-3 rounded-xl bg-slate-950/80 hover:bg-slate-900 border border-slate-800 text-left text-xs text-slate-300 transition-all hover:border-emerald-500/40 group"
+                className="p-3.5 rounded-xl bg-slate-950/80 hover:bg-slate-900 border border-slate-800 text-left text-xs text-slate-300 transition-all hover:border-emerald-500/50 hover:shadow-lg group"
               >
-                <div className="text-emerald-400 font-semibold flex items-center gap-1 mb-1">
-                  <Flame className="w-3 h-3" />
-                  Live Market Search
+                <div className="text-emerald-400 font-semibold flex items-center gap-1.5 mb-1">
+                  <Flame className="w-3.5 h-3.5" />
+                  Global Market Intelligence
                 </div>
-                <div className="text-slate-400 line-clamp-2">Current stock market and tech earnings</div>
+                <div className="text-slate-400 text-[11px] leading-snug">Live semiconductor & AI infrastructure telemetry</div>
               </button>
 
               <button
                 onClick={() => {
                   setIsSearchMode(false);
                   setSelectedModel('taka-qwen-27b');
-                  handleSendMessage('Solve this calculus optimization problem step by step with proofs.');
+                  handleSendMessage('Design an autonomous flight trajectory algorithm for hypersonic orbit navigation.');
                 }}
-                className="p-3 rounded-xl bg-slate-950/80 hover:bg-slate-900 border border-slate-800 text-left text-xs text-slate-300 transition-all hover:border-indigo-500/40 group"
+                className="p-3.5 rounded-xl bg-slate-950/80 hover:bg-slate-900 border border-slate-800 text-left text-xs text-slate-300 transition-all hover:border-indigo-500/50 hover:shadow-lg group"
               >
-                <div className="text-indigo-400 font-semibold flex items-center gap-1 mb-1">
-                  <Zap className="w-3 h-3" />
-                  Math & Logic
+                <div className="text-indigo-400 font-semibold flex items-center gap-1.5 mb-1">
+                  <Zap className="w-3.5 h-3.5" />
+                  Hypersonic Algorithms
                 </div>
-                <div className="text-slate-400 line-clamp-2">Calculus optimization proofs step-by-step</div>
+                <div className="text-slate-400 text-[11px] leading-snug">Autonomous trajectory & orbital mechanics physics</div>
               </button>
             </div>
+          )}      </div>
           )}
 
           {/* User Input Bar with Search Action Button */}
@@ -1885,17 +1885,26 @@ export async function POST(req: Request) {
       )}
 
       {/* Universal Footer */}
-      <footer className="border-t border-slate-800/60 py-3.5 px-6 text-center text-xs text-slate-500 bg-[#080d19]/80 flex flex-col sm:flex-row items-center justify-between gap-2">
-        <span>Taka AI • High-Speed Neural Inference & Autonomous Live Web Search</span>
-        <div className="flex items-center gap-4 text-slate-400">
-          <button onClick={() => setMainView('chat')} className="hover:text-cyan-300 transition-colors">
+      <footer className="border-t border-slate-800/80 py-4 px-6 text-center text-xs text-slate-400 bg-[#070b16] flex flex-col sm:flex-row items-center justify-between gap-3 shadow-inner">
+        <div className="flex items-center gap-2">
+          <span className="font-semibold text-slate-200">Taka AI</span>
+          <span className="text-slate-600">•</span>
+          <span className="text-cyan-300 font-medium">Architected & Engineered by Takadori</span>
+          <span className="text-slate-600 hidden md:inline">•</span>
+          <span className="text-slate-500 hidden md:inline">Autonomous Arc Neural Super-Intelligence</span>
+        </div>
+        <div className="flex items-center gap-4 text-xs font-medium text-slate-400">
+          <button onClick={() => setMainView('chat')} className="hover:text-cyan-300 transition-colors flex items-center gap-1">
+            <Search className="w-3 h-3 text-amber-400" />
             AI Search
           </button>
-          <button onClick={() => { setMainView('dashboard'); setDashboardTab('keys'); }} className="hover:text-cyan-300 transition-colors">
-            Create API Key
+          <button onClick={() => { setMainView('dashboard'); setDashboardTab('keys'); }} className="hover:text-cyan-300 transition-colors flex items-center gap-1">
+            <Key className="w-3 h-3 text-cyan-400" />
+            Developer Gateway
           </button>
-          <button onClick={() => { setMainView('dashboard'); setDashboardTab('docs'); }} className="hover:text-cyan-300 transition-colors">
-            Docs & Streaming
+          <button onClick={() => { setMainView('dashboard'); setDashboardTab('docs'); }} className="hover:text-cyan-300 transition-colors flex items-center gap-1">
+            <BookOpen className="w-3 h-3 text-indigo-400" />
+            API & Streaming
           </button>
         </div>
       </footer>
