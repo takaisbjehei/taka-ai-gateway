@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Key, 
   Terminal, 
@@ -30,9 +30,29 @@ import {
   Code, 
   Clock, 
   BarChart3, 
-  CheckCircle2 
+  MessageSquare,
+  Send,
+  Sliders,
+  Settings,
+  Bot,
+  User,
+  ExternalLink,
+  ChevronRight,
+  HelpCircle,
+  Flame,
+  CheckCircle2
 } from 'lucide-react';
 import { TAKA_MODELS } from '@/lib/models';
+
+interface Message {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  model?: string;
+  isSearching?: boolean;
+  latencyMs?: number;
+  timestamp: string;
+}
 
 interface TakaKey {
   id: string;
@@ -69,15 +89,41 @@ interface StatsData {
   gatewayStatus: string;
 }
 
+const DEFAULT_TAKAI_KEY = 'taka_live_e29d54a0a277890f0a1720fad57f12bf';
+
 export default function TakaPortal() {
-  // Auth Gate State
+  // Main View Mode: 'chat' (AI Search & Assistant) or 'dashboard' (Developer API Platform)
+  const [mainView, setMainView] = useState<'chat' | 'dashboard'>('chat');
+  const [dashboardTab, setDashboardTab] = useState<'keys' | 'access-codes' | 'docs' | 'cluster'>('keys');
+
+  // Auth State for Developer Dashboard
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [accessCodeInput, setAccessCodeInput] = useState('');
   const [authError, setAuthError] = useState('');
   const [isVerifyingCode, setIsVerifyingCode] = useState(false);
 
-  // App State
-  const [activeTab, setActiveTab] = useState<'keys' | 'access-codes' | 'playground' | 'docs' | 'cluster'>('keys');
+  // Chat & Search State
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      id: 'welcome-msg',
+      role: 'assistant',
+      content: "Hello! I am **Taka AI**, powered by our real-time neural network and live autonomous search engine.\n\nYou can ask me complex technical questions, request code, or enable the **🔍 Search Web** button to get real-time grounded intelligence from across the internet!",
+      model: 'taka-search-v1',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    }
+  ]);
+  const [userInput, setUserInput] = useState('');
+  const [selectedModel, setSelectedModel] = useState('taka-search-v1');
+  const [isSearchMode, setIsSearchMode] = useState(true);
+  const [isStreaming, setIsStreaming] = useState(true);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const chatBottomRef = useRef<HTMLDivElement>(null);
+
+  // Active Key in Chat
+  const [customUserKey, setCustomUserKey] = useState(DEFAULT_TAKAI_KEY);
+  const [showKeySettings, setShowKeySettings] = useState(false);
+
+  // Developer Platform Data
   const [takaKeys, setTakaKeys] = useState<TakaKey[]>([]);
   const [accessCodesList, setAccessCodesList] = useState<AccessCodeRecord[]>([]);
   const [stats, setStats] = useState<StatsData | null>(null);
@@ -101,16 +147,13 @@ export default function TakaPortal() {
   const [isOneTimePass, setIsOneTimePass] = useState(true);
   const [isCreatingPasscode, setIsCreatingPasscode] = useState(false);
 
-  // Playground State
-  const [selectedModel, setSelectedModel] = useState('taka-search-v1');
-  const [promptInput, setPromptInput] = useState('What are the latest breakthrough developments in quantum computing?');
-  const [isStreaming, setIsStreaming] = useState(true);
-  const [chatOutput, setChatOutput] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [responseLatency, setResponseLatency] = useState<number | null>(null);
-
   // Active Code Tab in Docs
   const [docCodeTab, setDocCodeTab] = useState<'python' | 'node' | 'curl' | 'nextjs'>('python');
+
+  // Auto-scroll chat
+  useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isGenerating]);
 
   // Check saved session on load
   useEffect(() => {
@@ -257,24 +300,51 @@ export default function TakaPortal() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const runPlayground = async () => {
-    if (!promptInput.trim() || isGenerating) return;
+  // SEND CHAT / SEARCH MESSAGE
+  const handleSendMessage = async (promptOverride?: string) => {
+    const textToSend = promptOverride || userInput;
+    if (!textToSend.trim() || isGenerating) return;
+
+    const chosenModel = isSearchMode ? 'taka-search-v1' : selectedModel;
+    const userMsgId = `user-${Date.now()}`;
+    const assistantMsgId = `asst-${Date.now()}`;
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    const newMessages: Message[] = [
+      ...messages,
+      {
+        id: userMsgId,
+        role: 'user',
+        content: textToSend,
+        timestamp: timeStr,
+      },
+      {
+        id: assistantMsgId,
+        role: 'assistant',
+        content: '',
+        model: chosenModel,
+        isSearching: isSearchMode,
+        timestamp: timeStr,
+      },
+    ];
+
+    setMessages(newMessages);
+    setUserInput('');
     setIsGenerating(true);
-    setChatOutput('');
-    setResponseLatency(null);
-    const start = Date.now();
+
+    const startTime = Date.now();
+    const apiKey = customUserKey || DEFAULT_TAKAI_KEY;
 
     try {
-      const activeKey = takaKeys[0]?.keySecret || 'taka_live_default';
       const response = await fetch('/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${activeKey}`,
+          'Authorization': `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-          model: selectedModel,
-          messages: [{ role: 'user', content: promptInput }],
+          model: chosenModel,
+          messages: newMessages.slice(0, -1).map((m) => ({ role: m.role, content: m.content })),
           stream: isStreaming,
         }),
       });
@@ -283,7 +353,7 @@ export default function TakaPortal() {
         if (!response.body) throw new Error('No stream body received');
         const reader = response.body.getReader();
         const decoder = new TextDecoder('utf-8');
-        let text = '';
+        let accumulated = '';
 
         while (true) {
           const { done, value } = await reader.read();
@@ -297,8 +367,14 @@ export default function TakaPortal() {
               try {
                 const parsed = JSON.parse(trimmed.replace('data: ', ''));
                 const delta = parsed.choices?.[0]?.delta?.content || '';
-                text += delta;
-                setChatOutput(text);
+                accumulated += delta;
+                setMessages((prev) =>
+                  prev.map((msg) =>
+                    msg.id === assistantMsgId
+                      ? { ...msg, content: accumulated, latencyMs: Date.now() - startTime }
+                      : msg
+                  )
+                );
               } catch {
                 // ignore
               }
@@ -307,15 +383,26 @@ export default function TakaPortal() {
         }
       } else {
         const data = await response.json();
-        setChatOutput(data.choices?.[0]?.message?.content || 'No response returned');
+        const content = data.choices?.[0]?.message?.content || 'No response returned.';
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMsgId
+              ? { ...msg, content, latencyMs: Date.now() - startTime }
+              : msg
+          )
+        );
       }
-
-      setResponseLatency(Date.now() - start);
     } catch (err: any) {
-      setChatOutput(`[Error]: ${err.message}`);
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === assistantMsgId
+            ? { ...msg, content: `⚠️ Error communicating with Taka Gateway: ${err.message}` }
+            : msg
+        )
+      );
     } finally {
       setIsGenerating(false);
-      fetchData();
+      if (isAuthenticated) fetchData();
     }
   };
 
@@ -326,7 +413,7 @@ export default function TakaPortal() {
 
   const getCodeSnippet = (lang: 'python' | 'node' | 'curl' | 'nextjs', customKey?: string) => {
     const baseUrl = getBaseUrl();
-    const sampleKey = customKey || takaKeys[0]?.keySecret || 'taka_live_your_api_key';
+    const sampleKey = customKey || customUserKey || takaKeys[0]?.keySecret || 'taka_live_your_api_key';
 
     if (lang === 'python') {
       return `from openai import OpenAI
@@ -406,993 +493,1005 @@ export async function POST(req: Request) {
   }'`;
   };
 
-  // ==========================================
-  // ACCESS GATE SCREEN (IF NOT AUTHENTICATED)
-  // ==========================================
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen bg-[#070a12] text-slate-100 flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-[#0d1322] border border-slate-800/90 rounded-2xl p-8 space-y-6 shadow-2xl backdrop-blur-xl">
-          <div className="text-center space-y-2">
-            <div className="w-12 h-12 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 mx-auto shadow-inner">
-              <Lock className="w-6 h-6" />
-            </div>
-            <h1 className="text-xl font-bold tracking-tight text-white">Taka AI Gateway</h1>
-            <p className="text-xs text-slate-400">
-              Enter your access pass or one-time redemption code to unlock the developer platform.
-            </p>
-          </div>
-
-          <form onSubmit={handleAccessCodeLogin} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">
-                Access Code / Passcode
-              </label>
-              <input
-                type="text"
-                value={accessCodeInput}
-                onChange={(e) => setAccessCodeInput(e.target.value)}
-                placeholder="e.g. TAKA-VIP-8899"
-                required
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm font-mono text-cyan-300 placeholder:text-slate-600 focus:outline-none focus:border-cyan-500 transition-all uppercase tracking-widest text-center"
-              />
-            </div>
-
-            {authError && (
-              <div className="p-3 rounded-lg bg-rose-950/50 border border-rose-800 text-xs text-rose-300 text-center">
-                {authError}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={isVerifyingCode || !accessCodeInput.trim()}
-              className="w-full py-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-xs flex items-center justify-center gap-2 transition-all shadow-lg active:scale-95 disabled:opacity-50"
-            >
-              {isVerifyingCode ? (
-                <>
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  Verifying Access Pass...
-                </>
-              ) : (
-                <>
-                  Unlock Developer Platform
-                  <ArrowRight className="w-4 h-4" />
-                </>
-              )}
-            </button>
-          </form>
-
-          <div className="pt-2 border-t border-slate-800/80 text-center">
-            <p className="text-[11px] text-slate-500">
-              Protected by Taka AI Enterprise Security
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ==========================================
-  // AUTHENTICATED DEVELOPER PORTAL
-  // ==========================================
   return (
-    <div className="min-h-screen bg-[#070a12] text-slate-100 flex flex-col selection:bg-cyan-500/30 selection:text-cyan-200">
-      {/* Top Header */}
-      <header className="border-b border-slate-800/80 bg-[#0c1220]/90 backdrop-blur-md sticky top-0 z-40 px-6 py-3.5 flex items-center justify-between">
+    <div className="min-h-screen bg-[#060913] text-slate-100 flex flex-col selection:bg-cyan-500/30 selection:text-cyan-200">
+      {/* Top Universal Navbar */}
+      <header className="border-b border-slate-800/80 bg-[#0b101d]/90 backdrop-blur-md sticky top-0 z-40 px-4 md:px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-inner">
+          <div 
+            onClick={() => setMainView('chat')}
+            className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-inner cursor-pointer"
+          >
             <Sparkles className="w-5 h-5" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-base font-bold tracking-tight text-white">Taka AI</h1>
-              <span className="text-[10px] uppercase font-semibold px-2 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-800/60 text-cyan-400">
-                Developer Platform
+              <span 
+                onClick={() => setMainView('chat')}
+                className="text-base font-extrabold tracking-tight text-white cursor-pointer hover:text-cyan-300 transition-colors"
+              >
+                Taka AI
+              </span>
+              <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-800/70 text-cyan-400 shadow-sm">
+                Neural Cloud
               </span>
             </div>
-            <p className="text-xs text-slate-400">High-Performance Neural Inference & Web Search Cloud</p>
+            <p className="text-[11px] text-slate-400 hidden sm:block">Autonomous Live Web Search & Multi-Model Intelligence</p>
           </div>
         </div>
 
-        {/* Center Navigation Tabs */}
-        <div className="hidden md:flex items-center gap-1 bg-slate-900/90 p-1 rounded-xl border border-slate-800">
+        {/* Center Mode Switcher: AI Search vs Developer Gateway */}
+        <div className="flex items-center gap-1 bg-slate-950/90 p-1 rounded-xl border border-slate-800 shadow-inner">
           <button
-            onClick={() => setActiveTab('keys')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-2 transition-all ${
-              activeTab === 'keys' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
+            onClick={() => setMainView('chat')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+              mainView === 'chat'
+                ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-md'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Search className="w-3.5 h-3.5" />
+            AI Search & Chat
+          </button>
+          <button
+            onClick={() => setMainView('dashboard')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+              mainView === 'dashboard'
+                ? 'bg-slate-800 text-white shadow-md border border-slate-700'
+                : 'text-slate-400 hover:text-slate-200'
             }`}
           >
             <Key className="w-3.5 h-3.5 text-cyan-400" />
-            API Keys
-          </button>
-          <button
-            onClick={() => setActiveTab('access-codes')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-2 transition-all ${
-              activeTab === 'access-codes' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Ticket className="w-3.5 h-3.5 text-amber-400" />
-            Access Passcodes
-          </button>
-          <button
-            onClick={() => setActiveTab('playground')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-2 transition-all ${
-              activeTab === 'playground' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Terminal className="w-3.5 h-3.5 text-emerald-400" />
-            Playground & Search
-          </button>
-          <button
-            onClick={() => setActiveTab('docs')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-2 transition-all ${
-              activeTab === 'docs' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <BookOpen className="w-3.5 h-3.5 text-indigo-400" />
-            API Connection Guide
-          </button>
-          <button
-            onClick={() => setActiveTab('cluster')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-2 transition-all ${
-              activeTab === 'cluster' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Activity className="w-3.5 h-3.5 text-cyan-400" />
-            Cluster Health
+            Developer Gateway
           </button>
         </div>
 
         {/* Right Actions */}
         <div className="flex items-center gap-2">
+          {mainView === 'chat' && (
+            <button
+              onClick={() => setShowKeySettings(!showKeySettings)}
+              className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-cyan-400 hover:border-slate-700 transition-colors"
+              title="API Key Settings"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+          )}
+
           <button
             onClick={() => {
-              setGeneratedKey(null);
-              setNewKeyName('');
-              setShowCreateModal(true);
+              setMainView('dashboard');
+              setDashboardTab('keys');
+              if (isAuthenticated) {
+                setGeneratedKey(null);
+                setNewKeyName('');
+                setShowCreateModal(true);
+              }
             }}
-            className="px-3.5 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-xs font-semibold text-white flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
+            className="px-3.5 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-xs font-semibold text-white flex items-center gap-1.5 transition-all shadow-md active:scale-95"
           >
-            <Plus className="w-4 h-4" />
-            Create API Key
-          </button>
-          <button
-            onClick={handleLogout}
-            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-rose-400 transition-colors"
-            title="Lock / Logout"
-          >
-            <LogOut className="w-4 h-4" />
+            <Plus className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Make Your Own</span> API Key
           </button>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="flex-1 max-w-6xl w-full mx-auto p-6 space-y-6">
-        {/* Metric Bar */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800/80">
-            <div className="flex items-center justify-between text-slate-400 text-xs font-medium mb-1">
-              <span>ACTIVE CLUSTER NODES</span>
-              <Cpu className="w-4 h-4 text-emerald-400" />
-            </div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-white">{stats?.activeKeys ?? 8}</span>
-              <span className="text-xs text-slate-500">/ {stats?.totalKeys ?? 8} Online</span>
-            </div>
-            <p className="text-[11px] text-emerald-400/90 mt-1 flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              Round-Robin Engine Active
-            </p>
-          </div>
-
-          <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800/80">
-            <div className="flex items-center justify-between text-slate-400 text-xs font-medium mb-1">
-              <span>TOTAL INFERENCE CALLS</span>
-              <Layers className="w-4 h-4 text-cyan-400" />
-            </div>
-            <div className="text-2xl font-bold text-white">{stats?.totalRequests ?? 0}</div>
-            <p className="text-[11px] text-slate-400 mt-1">
-              Distributed evenly across cluster
-            </p>
-          </div>
-
-          <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800/80">
-            <div className="flex items-center justify-between text-slate-400 text-xs font-medium mb-1">
-              <span>STREAMING LATENCY (TTFT)</span>
-              <Zap className="w-4 h-4 text-amber-400" />
-            </div>
-            <div className="text-2xl font-bold text-white">~120ms</div>
-            <p className="text-[11px] text-emerald-400 mt-1">
-              Real-time SSE token stream
-            </p>
-          </div>
-
-          <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800/80">
-            <div className="flex items-center justify-between text-slate-400 text-xs font-medium mb-1">
-              <span>ENDPOINT BASE URL</span>
-              <Globe className="w-4 h-4 text-cyan-400" />
-            </div>
-            <div className="text-xs font-mono font-semibold text-slate-200 truncate mt-1 bg-slate-950/80 p-1.5 rounded border border-slate-800">
-              {getBaseUrl()}
-            </div>
-            <button
-              onClick={() => copyToClipboard(getBaseUrl(), 'base-url')}
-              className="text-[11px] text-cyan-400 hover:text-cyan-300 mt-1 flex items-center gap-1"
-            >
-              {copiedId === 'base-url' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-              {copiedId === 'base-url' ? 'Copied' : 'Copy Endpoint'}
-            </button>
-          </div>
-        </div>
-
-        {/* TAB 1: API KEYS MANAGEMENT */}
-        {activeTab === 'keys' && (
-          <div className="space-y-6">
-            <div className="bg-slate-900/70 border border-slate-800/80 rounded-xl overflow-hidden shadow-sm">
-              <div className="px-6 py-5 border-b border-slate-800/80 flex items-center justify-between bg-slate-900/40">
-                <div>
-                  <h2 className="text-base font-semibold text-white flex items-center gap-2">
-                    <Key className="w-4 h-4 text-cyan-400" />
-                    Taka AI Secret API Keys
-                  </h2>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Generate, inspect usage, and manage authentication keys for your applications.
-                  </p>
-                </div>
+      {/* ========================================================= */}
+      {/* 1. CONSUMER AI SEARCH & CHAT EXPERIENCE (MAIN VIEW)       */}
+      {/* ========================================================= */}
+      {mainView === 'chat' && (
+        <div className="flex-1 flex flex-col max-w-5xl w-full mx-auto p-4 md:p-6 space-y-4">
+          {/* Key Settings Drawer (Optional) */}
+          {showKeySettings && (
+            <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 space-y-3 animate-in fade-in slide-in-from-top duration-200">
+              <div className="flex items-center justify-between text-xs font-semibold text-slate-300">
+                <span className="flex items-center gap-1.5">
+                  <Key className="w-3.5 h-3.5 text-cyan-400" />
+                  Active Client API Key
+                </span>
+                <span className="text-[11px] text-emerald-400">● Connected to Taka Gateway</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={customUserKey}
+                  onChange={(e) => setCustomUserKey(e.target.value)}
+                  placeholder="taka_live_..."
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-mono text-cyan-300 focus:outline-none focus:border-cyan-500"
+                />
                 <button
                   onClick={() => {
-                    setGeneratedKey(null);
-                    setNewKeyName('');
-                    setShowCreateModal(true);
+                    setMainView('dashboard');
+                    setDashboardTab('keys');
                   }}
-                  className="px-3.5 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-xs font-semibold text-white flex items-center gap-1.5 transition-colors shadow-sm"
+                  className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 font-medium whitespace-nowrap"
                 >
-                  <Plus className="w-4 h-4" />
-                  Create New Key
+                  Generate New Key
                 </button>
               </div>
-
-              {/* Keys Table */}
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-950/60 border-b border-slate-800 text-slate-400 font-medium">
-                    <tr>
-                      <th className="px-6 py-3">NAME</th>
-                      <th className="px-6 py-3">SECRET KEY</th>
-                      <th className="px-6 py-3">CREATED</th>
-                      <th className="px-6 py-3">USAGE</th>
-                      <th className="px-6 py-3">STATUS</th>
-                      <th className="px-6 py-3 text-right">ACTIONS & ANALYTICS</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                    {takaKeys.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="px-6 py-8 text-center text-slate-500">
-                          No API keys generated yet. Click "Create New Key" above.
-                        </td>
-                      </tr>
-                    ) : (
-                      takaKeys.map((k) => (
-                        <tr key={k.id} className="hover:bg-slate-800/20 transition-colors">
-                          <td className="px-6 py-4 font-semibold text-white flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-cyan-400" />
-                            {k.name}
-                          </td>
-                          <td className="px-6 py-4 font-mono text-slate-300">
-                            <div className="flex items-center gap-2">
-                              <code className="bg-slate-950 px-2 py-1 rounded border border-slate-800">
-                                {k.keyMasked}
-                              </code>
-                              <button
-                                onClick={() => copyToClipboard(k.keySecret, k.id)}
-                                className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors"
-                                title="Copy API Key"
-                              >
-                                {copiedId === k.id ? (
-                                  <Check className="w-3.5 h-3.5 text-emerald-400" />
-                                ) : (
-                                  <Copy className="w-3.5 h-3.5" />
-                                )}
-                              </button>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 text-slate-400">
-                            {new Date(k.createdAt).toLocaleDateString()}
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="font-semibold text-slate-200">
-                              {k.totalRequests} calls
-                            </div>
-                            <div className="text-[11px] text-cyan-400 font-mono">
-                              {(k.totalTokens || 0).toLocaleString()} tokens
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-950/80 border border-emerald-800/60 text-emerald-300 inline-flex items-center gap-1.5">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                              Active
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              <button
-                                onClick={() => {
-                                  setInspectKey(k);
-                                  setRevealSecret(false);
-                                }}
-                                className="px-2.5 py-1 rounded-md bg-cyan-950/80 hover:bg-cyan-900/80 border border-cyan-800/60 text-cyan-300 text-xs font-medium flex items-center gap-1.5 transition-colors shadow-sm"
-                                title="View API Key Details & Usage"
-                              >
-                                <Eye className="w-3.5 h-3.5 text-cyan-400" />
-                                View API
-                              </button>
-                              <button
-                                onClick={() => handleDeleteKey(k.id)}
-                                className="p-1.5 rounded-md hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 transition-colors"
-                                title="Revoke Key"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* TAB 2: ACCESS PASSCODES MANAGEMENT */}
-        {activeTab === 'access-codes' && (
-          <div className="space-y-6">
-            <div className="bg-slate-900/70 border border-slate-800/80 rounded-xl overflow-hidden shadow-sm">
-              <div className="px-6 py-5 border-b border-slate-800/80 flex items-center justify-between bg-slate-900/40">
-                <div>
-                  <h2 className="text-base font-semibold text-white flex items-center gap-2">
-                    <Ticket className="w-4 h-4 text-amber-400" />
-                    One-Time Access Passcodes
-                  </h2>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Generate single-use or permanent access codes for clients to unlock the developer platform.
-                  </p>
-                </div>
-                <button
-                  onClick={() => setShowPasscodeModal(true)}
-                  className="px-3.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-xs font-semibold text-white flex items-center gap-1.5 transition-colors shadow-sm"
-                >
-                  <Plus className="w-4 h-4" />
-                  Generate New Passcode
-                </button>
-              </div>
-
-              {/* Passcodes Table */}
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-950/60 border-b border-slate-800 text-slate-400 font-medium">
-                    <tr>
-                      <th className="px-6 py-3">LABEL</th>
-                      <th className="px-6 py-3">PASSCODE</th>
-                      <th className="px-6 py-3">TYPE</th>
-                      <th className="px-6 py-3">STATUS</th>
-                      <th className="px-6 py-3">CREATED</th>
-                      <th className="px-6 py-3 text-right">ACTIONS</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                    {accessCodesList.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="px-6 py-8 text-center text-slate-500">
-                          No passcodes found. Click "Generate New Passcode" above.
-                        </td>
-                      </tr>
-                    ) : (
-                      accessCodesList.map((c) => (
-                        <tr key={c.id} className="hover:bg-slate-800/20 transition-colors">
-                          <td className="px-6 py-4 font-semibold text-white flex items-center gap-2">
-                            <span className={`w-2 h-2 rounded-full ${c.is_used ? 'bg-slate-600' : 'bg-amber-400'}`} />
-                            {c.label}
-                          </td>
-                          <td className="px-6 py-4 font-mono">
-                            <div className="flex items-center gap-2">
-                              <code className="bg-slate-950 px-2.5 py-1 rounded border border-slate-800 text-cyan-300 font-bold">
-                                {c.code}
-                              </code>
-                              <button
-                                onClick={() => copyToClipboard(c.code, `code-${c.id}`)}
-                                className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors"
-                                title="Copy Code"
-                              >
-                                {copiedId === `code-${c.id}` ? (
-                                  <Check className="w-3.5 h-3.5 text-emerald-400" />
-                                ) : (
-                                  <Copy className="w-3.5 h-3.5" />
-                                )}
-                              </button>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 text-slate-400">
-                            {c.is_one_time ? 'One-Time Use' : 'Permanent'}
-                          </td>
-                          <td className="px-6 py-4">
-                            {c.is_used ? (
-                              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-800 border border-slate-700 text-slate-400 inline-flex items-center gap-1.5">
-                                Redeemed
-                              </span>
-                            ) : (
-                              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-950/80 border border-emerald-800/60 text-emerald-300 inline-flex items-center gap-1.5">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                                Available
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-6 py-4 text-slate-400">
-                            {new Date(c.created_at).toLocaleDateString()}
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            <button
-                              onClick={() => handleDeletePasscode(c.id)}
-                              className="p-1.5 rounded-md hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 transition-colors"
-                              title="Delete Passcode"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 3: PLAYGROUND & SEARCH */}
-        {activeTab === 'playground' && (
-          <div className="bg-slate-900/70 border border-slate-800/80 rounded-xl overflow-hidden shadow-sm flex flex-col">
-            <div className="px-6 py-4 border-b border-slate-800/80 flex items-center justify-between bg-slate-900/40">
-              <div className="flex items-center gap-2">
-                <Terminal className="w-4 h-4 text-emerald-400" />
-                <h2 className="text-sm font-semibold text-white">Taka Neural & Search Playground</h2>
-              </div>
-              <label className="text-xs text-slate-400 flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={isStreaming}
-                  onChange={(e) => setIsStreaming(e.target.checked)}
-                  className="rounded bg-slate-800 border-slate-700 text-cyan-500 focus:ring-0"
-                />
-                Stream Real-Time SSE
-              </label>
-            </div>
-
-            <div className="p-6 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-slate-400 mb-1.5">Model</label>
-                  <select
-                    value={selectedModel}
-                    onChange={(e) => setSelectedModel(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
-                  >
-                    <optgroup label="Live Web Search & Compound Multi-Agent">
-                      <option value="taka-search-v1">🔍 taka-search-v1 (Autonomous Web Search Agent)</option>
-                      <option value="taka-search-mini">🔍 taka-search-mini (Fast Web Search Agent)</option>
-                    </optgroup>
-                    <optgroup label="Ultra Intelligence & Flagship">
-                      <option value="taka-max-120b">🧠 taka-max-120b (Ultra-Intelligence 120B)</option>
-                      <option value="taka-ultra-70b">🚀 taka-ultra-70b (Versatile Reasoning 70B)</option>
-                      <option value="taka-qwen-27b">💻 taka-qwen-27b (Code & Math Powerhouse 27B)</option>
-                      <option value="taka-pro-20b">⚡ taka-pro-20b (High-Speed Dense 20B)</option>
-                    </optgroup>
-                    <optgroup label="Instant Real-Time">
-                      <option value="taka-flash-8b">⚡ taka-flash-8b (Sub-100ms Instant Response)</option>
-                    </optgroup>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-400 mb-1.5">Auth Header</label>
-                  <div className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-400 font-mono truncate">
-                    Bearer {takaKeys[0]?.keyMasked || 'taka_live_default...'}
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1.5">Prompt / Query</label>
-                <textarea
-                  value={promptInput}
-                  onChange={(e) => setPromptInput(e.target.value)}
-                  rows={3}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono resize-none"
-                  placeholder="Ask any question or search topic..."
-                />
-              </div>
-
+          {/* Model & Search Mode Bar */}
+          <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-2xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-sm">
+            {/* Search Engine Mode Toggle */}
+            <div className="flex items-center gap-2">
               <button
-                onClick={runPlayground}
-                disabled={isGenerating || !promptInput.trim()}
-                className="w-full py-2.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-medium text-xs flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                onClick={() => setIsSearchMode(!isSearchMode)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
+                  isSearchMode
+                    ? 'bg-amber-500/20 border border-amber-500/60 text-amber-300 shadow-sm'
+                    : 'bg-slate-950 border border-slate-800 text-slate-400 hover:text-slate-200'
+                }`}
               >
-                {isGenerating ? (
-                  <>
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    Generating via Taka Neural Engine...
-                  </>
-                ) : (
-                  <>
-                    <Play className="w-3.5 h-3.5 fill-current" />
-                    Send Request to Gateway
-                  </>
-                )}
+                <Search className={`w-3.5 h-3.5 ${isSearchMode ? 'text-amber-400 animate-pulse' : ''}`} />
+                {isSearchMode ? 'Live Web Search: Active' : 'Live Web Search: Off'}
               </button>
 
-              {/* Output Window */}
-              <div className="min-h-[160px] bg-slate-950 rounded-lg border border-slate-800/80 p-4 text-xs font-mono text-slate-200">
-                <div className="flex items-center justify-between text-[11px] text-slate-500 border-b border-slate-800/60 pb-2 mb-3">
-                  <span>Output Response</span>
-                  {responseLatency && (
-                    <span className="text-emerald-400 font-semibold flex items-center gap-1">
-                      <Zap className="w-3 h-3" /> Latency: {responseLatency}ms
-                    </span>
-                  )}
-                </div>
-                <div className="whitespace-pre-wrap">
-                  {chatOutput || <span className="text-slate-600 italic">Click "Send Request" to test generation & streaming...</span>}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 4: API CONNECTION GUIDE */}
-        {activeTab === 'docs' && (
-          <div className="space-y-6">
-            {/* Quick Connection Info Card */}
-            <div className="bg-slate-900/70 border border-slate-800/80 rounded-xl p-6 shadow-sm space-y-4">
-              <h2 className="text-base font-semibold text-white flex items-center gap-2">
-                <Info className="w-4 h-4 text-cyan-400" />
-                How to Connect to Taka AI Gateway
-              </h2>
-              <p className="text-xs text-slate-300">
-                Taka AI is a 100% standard OpenAI-compatible API. You can use it as a drop-in replacement in any library, SDK, Cursor IDE, OpenWebUI, LibreChat, or custom application.
-              </p>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 text-xs">
-                <div className="p-3 bg-slate-950 rounded-lg border border-slate-800">
-                  <div className="text-slate-500 font-medium">1. Base URL</div>
-                  <div className="font-mono text-cyan-300 font-semibold mt-1 truncate">{getBaseUrl()}</div>
-                </div>
-                <div className="p-3 bg-slate-950 rounded-lg border border-slate-800">
-                  <div className="text-slate-500 font-medium">2. Auth Header</div>
-                  <div className="font-mono text-emerald-300 font-semibold mt-1 truncate">Bearer taka_live_...</div>
-                </div>
-                <div className="p-3 bg-slate-950 rounded-lg border border-slate-800">
-                  <div className="text-slate-500 font-medium">3. Models Endpoint</div>
-                  <div className="font-mono text-indigo-300 font-semibold mt-1 truncate">GET /v1/models</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Code Snippets Card */}
-            <div className="bg-slate-900/70 border border-slate-800/80 rounded-xl overflow-hidden shadow-sm">
-              <div className="px-6 py-4 border-b border-slate-800/80 flex items-center justify-between bg-slate-900/40">
-                <div>
-                  <h3 className="text-sm font-semibold text-white">SDK Quickstart Snippets</h3>
-                  <p className="text-xs text-slate-400">Copy and paste directly into your project codebase.</p>
-                </div>
-                <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-lg border border-slate-800">
-                  <button
-                    onClick={() => setDocCodeTab('python')}
-                    className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-                      docCodeTab === 'python' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    Python
-                  </button>
-                  <button
-                    onClick={() => setDocCodeTab('node')}
-                    className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-                      docCodeTab === 'node' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    TypeScript
-                  </button>
-                  <button
-                    onClick={() => setDocCodeTab('nextjs')}
-                    className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-                      docCodeTab === 'nextjs' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    Vercel AI SDK
-                  </button>
-                  <button
-                    onClick={() => setDocCodeTab('curl')}
-                    className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-                      docCodeTab === 'curl' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    cURL
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-6">
-                <div className="relative">
-                  <pre className="bg-slate-950 rounded-lg p-4 font-mono text-xs text-slate-300 border border-slate-800/80 overflow-x-auto">
-                    <code>{getCodeSnippet(docCodeTab)}</code>
-                  </pre>
-                  <button
-                    onClick={() => copyToClipboard(getCodeSnippet(docCodeTab), 'doc-code')}
-                    className="absolute top-3 right-3 px-2.5 py-1 rounded bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-xs text-slate-300 flex items-center gap-1.5 transition-colors"
-                  >
-                    {copiedId === 'doc-code' ? (
-                      <>
-                        <Check className="w-3 h-3 text-emerald-400" />
-                        Copied!
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3 h-3" />
-                        Copy Code
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* EVERYTHING YOU NEED TO KNOW ABOUT STREAMING ON TAKA AI */}
-            <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-7 shadow-lg space-y-6">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-5">
-                <div>
-                  <h3 className="text-base font-bold text-white flex items-center gap-2.5">
-                    <Zap className="w-5 h-5 text-amber-400 fill-amber-400/20" />
-                    Everything You Need to Know About Streaming on Taka AI
-                  </h3>
-                  <p className="text-xs text-slate-400 mt-1">
-                    Complete reference for ultra-low latency Server-Sent Events (SSE), multi-language implementation, and token flow.
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-950/90 border border-emerald-800 text-emerald-400 flex items-center gap-1.5 shadow-sm">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    TTFT ~100–120ms
-                  </span>
-                  <span className="px-3 py-1 rounded-full text-xs font-semibold bg-cyan-950/90 border border-cyan-800 text-cyan-400">
-                    SSE Protocol
-                  </span>
-                </div>
-              </div>
-
-              {/* 1. Comparison Matrix */}
-              <div className="space-y-2.5">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                  1. Real-Time Streaming vs Standard Request
-                </h4>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs border border-slate-800 rounded-xl overflow-hidden">
-                    <thead className="bg-slate-950/80 text-slate-400 font-semibold border-b border-slate-800">
-                      <tr>
-                        <th className="p-3.5">METRIC / FEATURE</th>
-                        <th className="p-3.5 text-slate-400">STANDARD REQUEST (NO STREAM)</th>
-                        <th className="p-3.5 text-cyan-300 font-bold bg-cyan-950/30">TAKA STREAMING (stream=true)</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                      <tr>
-                        <td className="p-3.5 font-medium text-white">Time to First Token (TTFT)</td>
-                        <td className="p-3.5 text-slate-400">2,000ms – 6,000ms (Waits for full text)</td>
-                        <td className="p-3.5 text-emerald-400 font-semibold bg-cyan-950/20">⚡ 100ms – 150ms (Instant!)</td>
-                      </tr>
-                      <tr>
-                        <td className="p-3.5 font-medium text-white">User Experience</td>
-                        <td className="p-3.5 text-slate-400">Blank loading spinner, sudden block pop-in</td>
-                        <td className="p-3.5 text-slate-200 bg-cyan-950/20">Smooth typing animation word-by-word</td>
-                      </tr>
-                      <tr>
-                        <td className="p-3.5 font-medium text-white">Network Protocol</td>
-                        <td className="p-3.5 text-slate-400">HTTP application/json</td>
-                        <td className="p-3.5 text-slate-200 bg-cyan-950/20">HTTP text/event-stream (SSE)</td>
-                      </tr>
-                      <tr>
-                        <td className="p-3.5 font-medium text-white">Connection Resilience</td>
-                        <td className="p-3.5 text-slate-400">High timeout risk on 1000+ token outputs</td>
-                        <td className="p-3.5 text-slate-200 bg-cyan-950/20">Zero timeouts — persistent chunk pipeline</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* 2. Core Protocol Rules */}
-              <div className="space-y-2.5">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                  2. How the Token Pipeline Works
-                </h4>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-                  <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
-                    <div className="text-amber-400 font-bold flex items-center gap-1.5">
-                      <span className="w-5 h-5 rounded-full bg-amber-400/10 text-amber-400 flex items-center justify-center text-[10px]">1</span>
-                      Client Request
-                    </div>
-                    <p className="text-slate-400 leading-relaxed">
-                      Pass <code className="text-cyan-300 bg-slate-900 px-1 py-0.5 rounded font-mono">"stream": true</code> in your POST body. The server immediately returns a <code className="text-cyan-300 font-mono">200 OK</code> with <code className="text-cyan-300 font-mono">text/event-stream</code>.
-                    </p>
-                  </div>
-
-                  <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
-                    <div className="text-emerald-400 font-bold flex items-center gap-1.5">
-                      <span className="w-5 h-5 rounded-full bg-emerald-400/10 text-emerald-400 flex items-center justify-center text-[10px]">2</span>
-                      Live SSE Chunks
-                    </div>
-                    <p className="text-slate-400 leading-relaxed">
-                      Tokens are emitted as Server-Sent Events with JSON payloads: <code className="text-cyan-300 font-mono">data: &#123;"choices":[{"delta":{"content":"..."}}]&#125;</code>.
-                    </p>
-                  </div>
-
-                  <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
-                    <div className="text-indigo-400 font-bold flex items-center gap-1.5">
-                      <span className="w-5 h-5 rounded-full bg-indigo-400/10 text-indigo-400 flex items-center justify-center text-[10px]">3</span>
-                      Stream Termination
-                    </div>
-                    <p className="text-slate-400 leading-relaxed">
-                      When generation finishes, the engine emits the standard sentinel signal: <code className="text-cyan-300 bg-slate-900 px-1 py-0.5 rounded font-mono">data: [DONE]</code> and closes the stream.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* 3. Multi-Language Code Implementations */}
-              <div className="space-y-3">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                  3. Multi-Language Implementation Code
-                </h4>
-
-                {/* Python Streaming */}
-                <div className="bg-slate-950 rounded-xl p-4 border border-slate-800 space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-semibold text-cyan-400 font-mono">Python (Official openai SDK)</span>
-                    <button
-                      onClick={() => copyToClipboard(`from openai import OpenAI
-
-client = OpenAI(
-    base_url="${getBaseUrl()}",
-    api_key="${takaKeys[0]?.keySecret || 'taka_live_your_key'}"
-)
-
-# Enable stream=True
-response = client.chat.completions.create(
-    model="taka-search-v1", # or taka-max-120b, taka-flash-8b
-    messages=[{"role": "user", "content": "Explain quantum computing in 3 sentences."}],
-    stream=True
-)
-
-for chunk in response:
-    print(chunk.choices[0].delta.content or "", end="", flush=True)`, 'stream-py')}
-                      className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] flex items-center gap-1"
-                    >
-                      {copiedId === 'stream-py' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                      Copy Python
-                    </button>
-                  </div>
-                  <pre className="font-mono text-xs text-slate-300 overflow-x-auto">
-                    <code>{`from openai import OpenAI
-
-client = OpenAI(
-    base_url="${getBaseUrl()}",
-    api_key="${takaKeys[0]?.keySecret || 'taka_live_your_key'}"
-)
-
-# 1. Enable stream=True
-response = client.chat.completions.create(
-    model="taka-search-v1", # or taka-max-120b, taka-flash-8b
-    messages=[{"role": "user", "content": "Explain quantum computing in 3 sentences."}],
-    stream=True
-)
-
-# 2. Iterate in real-time
-for chunk in response:
-    print(chunk.choices[0].delta.content or "", end="", flush=True)`}</code>
-                  </pre>
-                </div>
-
-                {/* TypeScript / Node.js Streaming */}
-                <div className="bg-slate-950 rounded-xl p-4 border border-slate-800 space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-semibold text-emerald-400 font-mono">TypeScript / Node.js</span>
-                    <button
-                      onClick={() => copyToClipboard(`import OpenAI from "openai";
-
-const client = new OpenAI({
-  baseURL: "${getBaseUrl()}",
-  apiKey: "${takaKeys[0]?.keySecret || 'taka_live_your_key'}",
-});
-
-const stream = await client.chat.completions.create({
-  model: "taka-search-v1",
-  messages: [{ role: "user", content: "Explain quantum computing in 3 sentences." }],
-  stream: true,
-});
-
-for await (const chunk of stream) {
-  process.stdout.write(chunk.choices[0]?.delta?.content || "");
-}`, 'stream-ts')}
-                      className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] flex items-center gap-1"
-                    >
-                      {copiedId === 'stream-ts' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                      Copy TypeScript
-                    </button>
-                  </div>
-                  <pre className="font-mono text-xs text-slate-300 overflow-x-auto">
-                    <code>{`import OpenAI from "openai";
-
-const client = new OpenAI({
-  baseURL: "${getBaseUrl()}",
-  apiKey: "${takaKeys[0]?.keySecret || 'taka_live_your_key'}",
-});
-
-const stream = await client.chat.completions.create({
-  model: "taka-search-v1",
-  messages: [{ role: "user", content: "Explain quantum computing in 3 sentences." }],
-  stream: true,
-});
-
-for await (const chunk of stream) {
-  process.stdout.write(chunk.choices[0]?.delta?.content || "");
-}`}</code>
-                  </pre>
-                </div>
-
-                {/* Frontend React / JavaScript Fetch Streaming */}
-                <div className="bg-slate-950 rounded-xl p-4 border border-slate-800 space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-semibold text-indigo-400 font-mono">Frontend (React / Next.js / Vanilla JS)</span>
-                    <button
-                      onClick={() => copyToClipboard(`const response = await fetch("${getBaseUrl()}/chat/completions", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    "Authorization": "Bearer ${takaKeys[0]?.keySecret || 'taka_live_your_key'}"
-  },
-  body: JSON.stringify({
-    model: "taka-search-v1",
-    messages: [{ role: "user", content: "Tell me a short story." }],
-    stream: true
-  })
-});
-
-const reader = response.body.getReader();
-const decoder = new TextDecoder();
-let outputText = "";
-
-while (true) {
-  const { done, value } = await reader.read();
-  if (done) break;
-  const chunk = decoder.decode(value);
-  const lines = chunk.split("\\n");
-  for (const line of lines) {
-    if (line.startsWith("data: ") && line !== "data: [DONE]") {
-      const data = JSON.parse(line.slice(6));
-      outputText += data.choices[0]?.delta?.content || "";
-      console.log(outputText); // Updates UI dynamically!
-    }
-  }
-}`, 'stream-fe')}
-                      className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] flex items-center gap-1"
-                    >
-                      {copiedId === 'stream-fe' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                      Copy Frontend Code
-                    </button>
-                  </div>
-                  <pre className="font-mono text-xs text-slate-300 overflow-x-auto">
-                    <code>{`// Consume Live Token Stream directly in React / Browser
-const response = await fetch("${getBaseUrl()}/chat/completions", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    "Authorization": "Bearer ${takaKeys[0]?.keySecret || 'taka_live_your_key'}"
-  },
-  body: JSON.stringify({
-    model: "taka-search-v1",
-    messages: [{ role: "user", content: "Tell me a short story." }],
-    stream: true
-  })
-});
-
-const reader = response.body.getReader();
-const decoder = new TextDecoder();
-let outputText = "";
-
-while (true) {
-  const { done, value } = await reader.read();
-  if (done) break;
-  const chunk = decoder.decode(value);
-  const lines = chunk.split("\\n");
-  for (const line of lines) {
-    if (line.startsWith("data: ") && line !== "data: [DONE]") {
-      const data = JSON.parse(line.slice(6));
-      outputText += data.choices[0]?.delta?.content || "";
-      console.log(outputText); // Updates UI dynamically!
-    }
-  }
-}`}</code>
-                  </pre>
-                </div>
-              </div>
-            </div>
-
-            {/* Model Directory Card */}
-            <div className="bg-slate-900/70 border border-slate-800/80 rounded-xl p-6 shadow-sm">
-              <h3 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-cyan-400" />
-                Available Taka AI Models
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                {TAKA_MODELS.map((m) => (
-                  <div key={m.id} className="p-3.5 rounded-lg bg-slate-950 border border-slate-800">
-                    <div className="flex items-center justify-between">
-                      <div className="font-mono font-semibold text-cyan-400 flex items-center gap-1.5">
-                        {m.isSearchEngine && <Search className="w-3.5 h-3.5 text-amber-400" />}
-                        {m.id}
-                      </div>
-                      <span className="text-[10px] px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-400">
-                        {m.contextWindow}
-                      </span>
-                    </div>
-                    <div className="text-xs text-slate-300 font-medium mt-1">{m.name}</div>
-                    <p className="text-slate-500 mt-1">{m.description}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 5: CLUSTER HEALTH */}
-        {activeTab === 'cluster' && (
-          <div className="bg-slate-900/70 border border-slate-800/80 rounded-xl overflow-hidden shadow-sm">
-            <div className="px-6 py-4 border-b border-slate-800/80 flex items-center justify-between bg-slate-900/40">
-              <div className="flex items-center gap-2">
-                <Server className="w-4 h-4 text-cyan-400" />
-                <h2 className="text-sm font-semibold text-white">Taka Neural Cluster Matrix</h2>
-              </div>
-              <span className="text-xs text-emerald-400 font-medium flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                All 8 Nodes Operational
+              <span className="text-[11px] text-slate-500 hidden md:inline">
+                {isSearchMode ? 'Grounding answers with real-time web retrieval' : 'Direct neural reasoning'}
               </span>
             </div>
 
-            <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {Array.from({ length: 8 }).map((_, idx) => (
-                <div key={idx} className="p-4 rounded-xl bg-slate-950 border border-slate-800/80 flex flex-col justify-between">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-white">Node 0{idx + 1}</span>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-950 text-emerald-400 border border-emerald-800">
-                      Online
-                    </span>
+            {/* Model Selector (When not in search mode) */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-400 hidden sm:inline">Model:</span>
+              <select
+                disabled={isSearchMode}
+                value={isSearchMode ? 'taka-search-v1' : selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                className={`bg-slate-950 border rounded-xl px-3 py-1.5 text-xs font-mono focus:outline-none transition-all ${
+                  isSearchMode
+                    ? 'border-amber-500/30 text-amber-300 opacity-90 cursor-not-allowed'
+                    : 'border-slate-800 text-cyan-300 focus:border-cyan-500'
+                }`}
+              >
+                <option value="taka-search-v1">🔍 taka-search-v1 (Autonomous Web Agent)</option>
+                <option value="taka-search-mini">🔍 taka-search-mini (Fast Web Agent)</option>
+                <option value="taka-max-120b">🧠 taka-max-120b (Ultra Intelligence 120B)</option>
+                <option value="taka-ultra-70b">🚀 taka-ultra-70b (Versatile Engine 70B)</option>
+                <option value="taka-qwen-27b">💻 taka-qwen-27b (Code & Math Powerhouse 27B)</option>
+                <option value="taka-pro-20b">⚡ taka-pro-20b (High-Speed Dense 20B)</option>
+                <option value="taka-flash-8b">⚡ taka-flash-8b (Sub-100ms Instant)</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Chat Messages Feed */}
+          <div className="flex-1 min-h-[380px] max-h-[560px] overflow-y-auto space-y-4 pr-2 scrollbar-thin scrollbar-thumb-slate-800">
+            {messages.map((m) => (
+              <div
+                key={m.id}
+                className={`flex gap-3 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              >
+                {m.role === 'assistant' && (
+                  <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 shrink-0 mt-0.5">
+                    <Bot className="w-4 h-4" />
                   </div>
-                  <div className="mt-3 space-y-1 text-[11px] text-slate-400">
-                    <div className="flex justify-between">
-                      <span>Health:</span>
-                      <span className="text-slate-200">100%</span>
+                )}
+
+                <div
+                  className={`max-w-[85%] rounded-2xl p-4 space-y-2 shadow-sm ${
+                    m.role === 'user'
+                      ? 'bg-cyan-600 text-white rounded-br-none'
+                      : 'bg-slate-900/90 border border-slate-800 text-slate-200 rounded-bl-none'
+                  }`}
+                >
+                  {/* Assistant Header Tag */}
+                  {m.role === 'assistant' && (
+                    <div className="flex items-center justify-between text-[11px] text-slate-400 border-b border-slate-800 pb-1.5 mb-1.5">
+                      <span className="font-mono text-cyan-400 flex items-center gap-1.5">
+                        {m.isSearching && <Search className="w-3 h-3 text-amber-400" />}
+                        {m.model || 'taka-ai'}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        {m.latencyMs && (
+                          <span className="text-emerald-400 flex items-center gap-1">
+                            <Zap className="w-3 h-3" /> {m.latencyMs}ms
+                          </span>
+                        )}
+                        <span>{m.timestamp}</span>
+                      </div>
                     </div>
-                    <div className="flex justify-between">
-                      <span>Failover:</span>
-                      <span className="text-slate-200">Auto-Hot</span>
+                  )}
+
+                  <div className="whitespace-pre-wrap text-xs md:text-sm font-sans leading-relaxed">
+                    {m.content || (
+                      <span className="flex items-center gap-2 text-cyan-400 italic">
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        {m.isSearching ? 'Searching live web & synthesizing...' : 'Taka Neural Engine generating...'}
+                      </span>
+                    )}
+                  </div>
+
+                  {m.role === 'assistant' && m.content && (
+                    <div className="pt-2 flex justify-end">
+                      <button
+                        onClick={() => copyToClipboard(m.content, m.id)}
+                        className="p-1 rounded text-slate-400 hover:text-slate-200 text-[11px] flex items-center gap-1 transition-colors"
+                      >
+                        {copiedId === m.id ? (
+                          <>
+                            <Check className="w-3 h-3 text-emerald-400" />
+                            Copied
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3 h-3" />
+                            Copy
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {m.role === 'user' && (
+                  <div className="w-8 h-8 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 shrink-0 mt-0.5">
+                    <User className="w-4 h-4" />
+                  </div>
+                )}
+              </div>
+            ))}
+            <div ref={chatBottomRef} />
+          </div>
+
+          {/* Quick Starter Suggestions */}
+          {messages.length <= 2 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 pt-2">
+              <button
+                onClick={() => {
+                  setIsSearchMode(true);
+                  handleSendMessage('What are today\'s latest breakthrough developments in quantum computing?');
+                }}
+                className="p-3 rounded-xl bg-slate-950/80 hover:bg-slate-900 border border-slate-800 text-left text-xs text-slate-300 transition-all hover:border-amber-500/40 group"
+              >
+                <div className="text-amber-400 font-semibold flex items-center gap-1 mb-1">
+                  <Search className="w-3 h-3" />
+                  Live Web Search
+                </div>
+                <div className="text-slate-400 line-clamp-2">Latest quantum computing breakthroughs today</div>
+              </button>
+
+              <button
+                onClick={() => {
+                  setIsSearchMode(false);
+                  setSelectedModel('taka-max-120b');
+                  handleSendMessage('Write a full production Next.js API route with rate-limiting and streaming.');
+                }}
+                className="p-3 rounded-xl bg-slate-950/80 hover:bg-slate-900 border border-slate-800 text-left text-xs text-slate-300 transition-all hover:border-cyan-500/40 group"
+              >
+                <div className="text-cyan-400 font-semibold flex items-center gap-1 mb-1">
+                  <Code className="w-3 h-3" />
+                  120B Fullstack Code
+                </div>
+                <div className="text-slate-400 line-clamp-2">Production Next.js API route with streaming</div>
+              </button>
+
+              <button
+                onClick={() => {
+                  setIsSearchMode(true);
+                  handleSendMessage('What is the current stock market summary and tech earnings this week?');
+                }}
+                className="p-3 rounded-xl bg-slate-950/80 hover:bg-slate-900 border border-slate-800 text-left text-xs text-slate-300 transition-all hover:border-emerald-500/40 group"
+              >
+                <div className="text-emerald-400 font-semibold flex items-center gap-1 mb-1">
+                  <Flame className="w-3 h-3" />
+                  Live Market Search
+                </div>
+                <div className="text-slate-400 line-clamp-2">Current stock market and tech earnings</div>
+              </button>
+
+              <button
+                onClick={() => {
+                  setIsSearchMode(false);
+                  setSelectedModel('taka-qwen-27b');
+                  handleSendMessage('Solve this calculus optimization problem step by step with proofs.');
+                }}
+                className="p-3 rounded-xl bg-slate-950/80 hover:bg-slate-900 border border-slate-800 text-left text-xs text-slate-300 transition-all hover:border-indigo-500/40 group"
+              >
+                <div className="text-indigo-400 font-semibold flex items-center gap-1 mb-1">
+                  <Zap className="w-3 h-3" />
+                  Math & Logic
+                </div>
+                <div className="text-slate-400 line-clamp-2">Calculus optimization proofs step-by-step</div>
+              </button>
+            </div>
+          )}
+
+          {/* User Input Bar with Search Action Button */}
+          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-2.5 shadow-xl space-y-2">
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={userInput}
+                onChange={(e) => setUserInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage();
+                  }
+                }}
+                placeholder={
+                  isSearchMode
+                    ? 'Search anything on the live web or ask questions...'
+                    : 'Ask Taka AI reasoning & coding models...'
+                }
+                className="flex-1 bg-transparent px-3 py-2 text-xs md:text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none"
+              />
+
+              {/* Live Search Toggle inside prompt bar */}
+              <button
+                type="button"
+                onClick={() => setIsSearchMode(!isSearchMode)}
+                className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                  isSearchMode
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                    : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800'
+                }`}
+                title="Toggle Live Web Search"
+              >
+                <Search className={`w-3.5 h-3.5 ${isSearchMode ? 'text-amber-400' : ''}`} />
+                <span className="hidden sm:inline">{isSearchMode ? 'Search ON' : 'Search OFF'}</span>
+              </button>
+
+              {/* Submit Button */}
+              <button
+                type="button"
+                onClick={() => handleSendMessage()}
+                disabled={isGenerating || !userInput.trim()}
+                className="px-4 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-xs flex items-center gap-1.5 transition-all shadow-md active:scale-95 disabled:opacity-40"
+              >
+                {isGenerating ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>
+                    <span>Send</span>
+                    <Send className="w-3.5 h-3.5" />
+                  </>
+                )}
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between text-[11px] text-slate-500 px-3 pt-1 border-t border-slate-800/60">
+              <span>
+                Engine: <strong className="text-slate-400">{isSearchMode ? 'taka-search-v1 (Web Agent)' : selectedModel}</strong>
+              </span>
+              <span>
+                Stream: <strong className="text-emerald-400">SSE Active (~120ms TTFT)</strong>
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* 2. DEVELOPER GATEWAY & API PORTAL (DASHBOARD VIEW)        */}
+      {/* ========================================================= */}
+      {mainView === 'dashboard' && (
+        <>
+          {/* If NOT Authenticated -> Show Passcode Login Gate */}
+          {!isAuthenticated ? (
+            <div className="flex-1 flex items-center justify-center p-4">
+              <div className="max-w-md w-full bg-[#0d1322] border border-slate-800/90 rounded-2xl p-8 space-y-6 shadow-2xl backdrop-blur-xl">
+                <div className="text-center space-y-2">
+                  <div className="w-12 h-12 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 mx-auto shadow-inner">
+                    <Lock className="w-6 h-6" />
+                  </div>
+                  <h2 className="text-xl font-bold tracking-tight text-white">Developer Gateway Gate</h2>
+                  <p className="text-xs text-slate-400">
+                    Enter your access pass or one-time passcode to manage API keys and inspect gateway telemetry.
+                  </p>
+                </div>
+
+                <form onSubmit={handleAccessCodeLogin} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">
+                      Access Passcode
+                    </label>
+                    <input
+                      type="text"
+                      value={accessCodeInput}
+                      onChange={(e) => setAccessCodeInput(e.target.value)}
+                      placeholder="e.g. TAKA-MASTER-2026 or TAKA-VIP-8899"
+                      required
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm font-mono text-cyan-300 placeholder:text-slate-600 focus:outline-none focus:border-cyan-500 transition-all uppercase tracking-widest text-center"
+                    />
+                  </div>
+
+                  {authError && (
+                    <div className="p-3 rounded-lg bg-rose-950/50 border border-rose-800 text-xs text-rose-300 text-center">
+                      {authError}
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={isVerifyingCode || !accessCodeInput.trim()}
+                    className="w-full py-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-xs flex items-center justify-center gap-2 transition-all shadow-lg active:scale-95 disabled:opacity-50"
+                  >
+                    {isVerifyingCode ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        Verifying Passcode...
+                      </>
+                    ) : (
+                      <>
+                        Unlock Developer Dashboard
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                </form>
+
+                <div className="pt-2 border-t border-slate-800/80 text-center flex items-center justify-between text-[11px] text-slate-500">
+                  <span>Protected by Taka AI Security</span>
+                  <button
+                    onClick={() => setMainView('chat')}
+                    className="text-cyan-400 hover:text-cyan-300 font-medium"
+                  >
+                    ← Back to AI Chat & Search
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* If Authenticated -> Full Developer Portal */
+            <main className="flex-1 max-w-6xl w-full mx-auto p-6 space-y-6">
+              {/* Dashboard Sub Navigation */}
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => setDashboardTab('keys')}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${
+                      dashboardTab === 'keys' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <Key className="w-3.5 h-3.5 text-cyan-400" />
+                    API Keys
+                  </button>
+                  <button
+                    onClick={() => setDashboardTab('access-codes')}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${
+                      dashboardTab === 'access-codes' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <Ticket className="w-3.5 h-3.5 text-amber-400" />
+                    Access Passcodes
+                  </button>
+                  <button
+                    onClick={() => setDashboardTab('docs')}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${
+                      dashboardTab === 'docs' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <BookOpen className="w-3.5 h-3.5 text-indigo-400" />
+                    API Connection Guide
+                  </button>
+                  <button
+                    onClick={() => setDashboardTab('cluster')}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${
+                      dashboardTab === 'cluster' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <Activity className="w-3.5 h-3.5 text-emerald-400" />
+                    Cluster Health
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleLogout}
+                    className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-rose-400 transition-colors"
+                    title="Lock Dashboard"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Metric Bar */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800/80">
+                  <div className="flex items-center justify-between text-slate-400 text-xs font-medium mb-1">
+                    <span>ACTIVE CLUSTER NODES</span>
+                    <Cpu className="w-4 h-4 text-emerald-400" />
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl font-bold text-white">{stats?.activeKeys ?? 8}</span>
+                    <span className="text-xs text-slate-500">/ {stats?.totalKeys ?? 8} Online</span>
+                  </div>
+                  <p className="text-[11px] text-emerald-400/90 mt-1 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    Round-Robin Active
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800/80">
+                  <div className="flex items-center justify-between text-slate-400 text-xs font-medium mb-1">
+                    <span>TOTAL INFERENCE CALLS</span>
+                    <Layers className="w-4 h-4 text-cyan-400" />
+                  </div>
+                  <div className="text-2xl font-bold text-white">{stats?.totalRequests ?? 0}</div>
+                  <p className="text-[11px] text-slate-400 mt-1">Distributed across cluster</p>
+                </div>
+
+                <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800/80">
+                  <div className="flex items-center justify-between text-slate-400 text-xs font-medium mb-1">
+                    <span>STREAMING LATENCY (TTFT)</span>
+                    <Zap className="w-4 h-4 text-amber-400" />
+                  </div>
+                  <div className="text-2xl font-bold text-white">~120ms</div>
+                  <p className="text-[11px] text-emerald-400 mt-1">Real-time SSE token stream</p>
+                </div>
+
+                <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800/80">
+                  <div className="flex items-center justify-between text-slate-400 text-xs font-medium mb-1">
+                    <span>ENDPOINT BASE URL</span>
+                    <Globe className="w-4 h-4 text-cyan-400" />
+                  </div>
+                  <div className="text-xs font-mono font-semibold text-slate-200 truncate mt-1 bg-slate-950/80 p-1.5 rounded border border-slate-800">
+                    {getBaseUrl()}
+                  </div>
+                  <button
+                    onClick={() => copyToClipboard(getBaseUrl(), 'base-url')}
+                    className="text-[11px] text-cyan-400 hover:text-cyan-300 mt-1 flex items-center gap-1"
+                  >
+                    {copiedId === 'base-url' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                    {copiedId === 'base-url' ? 'Copied' : 'Copy Endpoint'}
+                  </button>
+                </div>
+              </div>
+
+              {/* DASHBOARD TAB 1: API KEYS */}
+              {dashboardTab === 'keys' && (
+                <div className="bg-slate-900/70 border border-slate-800/80 rounded-xl overflow-hidden shadow-sm">
+                  <div className="px-6 py-5 border-b border-slate-800/80 flex items-center justify-between bg-slate-900/40">
+                    <div>
+                      <h2 className="text-base font-semibold text-white flex items-center gap-2">
+                        <Key className="w-4 h-4 text-cyan-400" />
+                        Taka AI Secret API Keys
+                      </h2>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Generate, inspect token telemetry, and manage authentication keys for your applications.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setGeneratedKey(null);
+                        setNewKeyName('');
+                        setShowCreateModal(true);
+                      }}
+                      className="px-3.5 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-xs font-semibold text-white flex items-center gap-1.5 transition-colors shadow-sm"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Create New Key
+                    </button>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-950/60 border-b border-slate-800 text-slate-400 font-medium">
+                        <tr>
+                          <th className="px-6 py-3">NAME</th>
+                          <th className="px-6 py-3">SECRET KEY</th>
+                          <th className="px-6 py-3">CREATED</th>
+                          <th className="px-6 py-3">CALLS & TOKENS</th>
+                          <th className="px-6 py-3">STATUS</th>
+                          <th className="px-6 py-3 text-right">ACTIONS & ANALYTICS</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/60 text-slate-300">
+                        {takaKeys.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="px-6 py-8 text-center text-slate-500">
+                              No API keys generated yet. Click "Create New Key" above.
+                            </td>
+                          </tr>
+                        ) : (
+                          takaKeys.map((k) => (
+                            <tr key={k.id} className="hover:bg-slate-800/20 transition-colors">
+                              <td className="px-6 py-4 font-semibold text-white flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-cyan-400" />
+                                {k.name}
+                              </td>
+                              <td className="px-6 py-4 font-mono text-slate-300">
+                                <div className="flex items-center gap-2">
+                                  <code className="bg-slate-950 px-2 py-1 rounded border border-slate-800">
+                                    {k.keyMasked}
+                                  </code>
+                                  <button
+                                    onClick={() => copyToClipboard(k.keySecret, k.id)}
+                                    className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors"
+                                    title="Copy API Key"
+                                  >
+                                    {copiedId === k.id ? (
+                                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                    ) : (
+                                      <Copy className="w-3.5 h-3.5" />
+                                    )}
+                                  </button>
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 text-slate-400">
+                                {new Date(k.createdAt).toLocaleDateString()}
+                              </td>
+                              <td className="px-6 py-4">
+                                <div className="font-semibold text-slate-200">
+                                  {k.totalRequests} calls
+                                </div>
+                                <div className="text-[11px] text-cyan-400 font-mono">
+                                  {(k.totalTokens || 0).toLocaleString()} tokens
+                                </div>
+                              </td>
+                              <td className="px-6 py-4">
+                                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-950/80 border border-emerald-800/60 text-emerald-300 inline-flex items-center gap-1.5">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                  Active
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 text-right">
+                                <div className="flex items-center justify-end gap-2">
+                                  <button
+                                    onClick={() => {
+                                      setInspectKey(k);
+                                      setRevealSecret(false);
+                                    }}
+                                    className="px-2.5 py-1 rounded-md bg-cyan-950/80 hover:bg-cyan-900/80 border border-cyan-800/60 text-cyan-300 text-xs font-medium flex items-center gap-1.5 transition-colors shadow-sm"
+                                    title="View API Details & Usage"
+                                  >
+                                    <Eye className="w-3.5 h-3.5 text-cyan-400" />
+                                    View API
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteKey(k.id)}
+                                    className="p-1.5 rounded-md hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 transition-colors"
+                                    title="Revoke Key"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* DASHBOARD TAB 2: ACCESS PASSCODES */}
+              {dashboardTab === 'access-codes' && (
+                <div className="bg-slate-900/70 border border-slate-800/80 rounded-xl overflow-hidden shadow-sm">
+                  <div className="px-6 py-5 border-b border-slate-800/80 flex items-center justify-between bg-slate-900/40">
+                    <div>
+                      <h2 className="text-base font-semibold text-white flex items-center gap-2">
+                        <Ticket className="w-4 h-4 text-amber-400" />
+                        One-Time Access Passcodes
+                      </h2>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Generate single-use or permanent access codes for clients to unlock the developer dashboard.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setShowPasscodeModal(true)}
+                      className="px-3.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-xs font-semibold text-white flex items-center gap-1.5 transition-colors shadow-sm"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Generate New Passcode
+                    </button>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-950/60 border-b border-slate-800 text-slate-400 font-medium">
+                        <tr>
+                          <th className="px-6 py-3">LABEL</th>
+                          <th className="px-6 py-3">PASSCODE</th>
+                          <th className="px-6 py-3">TYPE</th>
+                          <th className="px-6 py-3">STATUS</th>
+                          <th className="px-6 py-3">CREATED</th>
+                          <th className="px-6 py-3 text-right">ACTIONS</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/60 text-slate-300">
+                        {accessCodesList.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="px-6 py-8 text-center text-slate-500">
+                              No passcodes found. Click "Generate New Passcode" above.
+                            </td>
+                          </tr>
+                        ) : (
+                          accessCodesList.map((c) => (
+                            <tr key={c.id} className="hover:bg-slate-800/20 transition-colors">
+                              <td className="px-6 py-4 font-semibold text-white flex items-center gap-2">
+                                <span className={`w-2 h-2 rounded-full ${c.is_used ? 'bg-slate-600' : 'bg-amber-400'}`} />
+                                {c.label}
+                              </td>
+                              <td className="px-6 py-4 font-mono">
+                                <div className="flex items-center gap-2">
+                                  <code className="bg-slate-950 px-2.5 py-1 rounded border border-slate-800 text-cyan-300 font-bold">
+                                    {c.code}
+                                  </code>
+                                  <button
+                                    onClick={() => copyToClipboard(c.code, `code-${c.id}`)}
+                                    className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors"
+                                    title="Copy Code"
+                                  >
+                                    {copiedId === `code-${c.id}` ? (
+                                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                    ) : (
+                                      <Copy className="w-3.5 h-3.5" />
+                                    )}
+                                  </button>
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 text-slate-400">
+                                {c.is_one_time ? 'One-Time Use' : 'Permanent'}
+                              </td>
+                              <td className="px-6 py-4">
+                                {c.is_used ? (
+                                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-800 border border-slate-700 text-slate-400 inline-flex items-center gap-1.5">
+                                    Redeemed
+                                  </span>
+                                ) : (
+                                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-950/80 border border-emerald-800/60 text-emerald-300 inline-flex items-center gap-1.5">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                    Available
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-6 py-4 text-slate-400">
+                                {new Date(c.created_at).toLocaleDateString()}
+                              </td>
+                              <td className="px-6 py-4 text-right">
+                                <button
+                                  onClick={() => handleDeletePasscode(c.id)}
+                                  className="p-1.5 rounded-md hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 transition-colors"
+                                  title="Delete Passcode"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* DASHBOARD TAB 3: API CONNECTION GUIDE & STREAMING SHOWCASE */}
+              {dashboardTab === 'docs' && (
+                <div className="space-y-6">
+                  {/* Quick Info Card */}
+                  <div className="bg-slate-900/70 border border-slate-800/80 rounded-xl p-6 shadow-sm space-y-4">
+                    <h3 className="text-base font-semibold text-white flex items-center gap-2">
+                      <Info className="w-4 h-4 text-cyan-400" />
+                      How to Connect to Taka AI Gateway
+                    </h3>
+                    <p className="text-xs text-slate-300">
+                      Taka AI is a 100% standard OpenAI-compatible API. You can use it as a drop-in replacement in any library, SDK, Cursor IDE, OpenWebUI, LibreChat, or custom application.
+                    </p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 text-xs">
+                      <div className="p-3 bg-slate-950 rounded-lg border border-slate-800">
+                        <div className="text-slate-500 font-medium">1. Base URL</div>
+                        <div className="font-mono text-cyan-300 font-semibold mt-1 truncate">{getBaseUrl()}</div>
+                      </div>
+                      <div className="p-3 bg-slate-950 rounded-lg border border-slate-800">
+                        <div className="text-slate-500 font-medium">2. Auth Header</div>
+                        <div className="font-mono text-emerald-300 font-semibold mt-1 truncate">Bearer taka_live_...</div>
+                      </div>
+                      <div className="p-3 bg-slate-950 rounded-lg border border-slate-800">
+                        <div className="text-slate-500 font-medium">3. Models Endpoint</div>
+                        <div className="font-mono text-indigo-300 font-semibold mt-1 truncate">GET /v1/models</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* SDK Quickstart */}
+                  <div className="bg-slate-900/70 border border-slate-800/80 rounded-xl overflow-hidden shadow-sm">
+                    <div className="px-6 py-4 border-b border-slate-800/80 flex items-center justify-between bg-slate-900/40">
+                      <div>
+                        <h3 className="text-sm font-semibold text-white">SDK Quickstart Snippets</h3>
+                        <p className="text-xs text-slate-400">Copy and paste directly into your project codebase.</p>
+                      </div>
+                      <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-lg border border-slate-800">
+                        <button
+                          onClick={() => setDocCodeTab('python')}
+                          className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                            docCodeTab === 'python' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          Python
+                        </button>
+                        <button
+                          onClick={() => setDocCodeTab('node')}
+                          className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                            docCodeTab === 'node' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          TypeScript
+                        </button>
+                        <button
+                          onClick={() => setDocCodeTab('nextjs')}
+                          className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                            docCodeTab === 'nextjs' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          Vercel AI SDK
+                        </button>
+                        <button
+                          onClick={() => setDocCodeTab('curl')}
+                          className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                            docCodeTab === 'curl' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          cURL
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="p-6">
+                      <div className="relative">
+                        <pre className="bg-slate-950 rounded-lg p-4 font-mono text-xs text-slate-300 border border-slate-800/80 overflow-x-auto">
+                          <code>{getCodeSnippet(docCodeTab)}</code>
+                        </pre>
+                        <button
+                          onClick={() => copyToClipboard(getCodeSnippet(docCodeTab), 'doc-code')}
+                          className="absolute top-3 right-3 px-2.5 py-1 rounded bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-xs text-slate-300 flex items-center gap-1.5 transition-colors"
+                        >
+                          {copiedId === 'doc-code' ? (
+                            <>
+                              <Check className="w-3 h-3 text-emerald-400" />
+                              Copied!
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3 h-3" />
+                              Copy Code
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* STREAMING SHOWCASE CARD */}
+                  <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-7 shadow-lg space-y-6">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-5">
+                      <div>
+                        <h3 className="text-base font-bold text-white flex items-center gap-2.5">
+                          <Zap className="w-5 h-5 text-amber-400 fill-amber-400/20" />
+                          Everything You Need to Know About Streaming on Taka AI
+                        </h3>
+                        <p className="text-xs text-slate-400 mt-1">
+                          Complete reference for ultra-low latency Server-Sent Events (SSE), multi-language implementation, and token flow.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-950/90 border border-emerald-800 text-emerald-400 flex items-center gap-1.5 shadow-sm">
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                          TTFT ~100–120ms
+                        </span>
+                        <span className="px-3 py-1 rounded-full text-xs font-semibold bg-cyan-950/90 border border-cyan-800 text-cyan-400">
+                          SSE Protocol
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Comparison Matrix */}
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs border border-slate-800 rounded-xl overflow-hidden">
+                        <thead className="bg-slate-950/80 text-slate-400 font-semibold border-b border-slate-800">
+                          <tr>
+                            <th className="p-3.5">METRIC / FEATURE</th>
+                            <th className="p-3.5 text-slate-400">STANDARD REQUEST (NO STREAM)</th>
+                            <th className="p-3.5 text-cyan-300 font-bold bg-cyan-950/30">TAKA STREAMING (stream=true)</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800/60 text-slate-300">
+                          <tr>
+                            <td className="p-3.5 font-medium text-white">Time to First Token (TTFT)</td>
+                            <td className="p-3.5 text-slate-400">2,000ms – 6,000ms (Waits for full text)</td>
+                            <td className="p-3.5 text-emerald-400 font-semibold bg-cyan-950/20">⚡ 100ms – 150ms (Instant!)</td>
+                          </tr>
+                          <tr>
+                            <td className="p-3.5 font-medium text-white">User Experience</td>
+                            <td className="p-3.5 text-slate-400">Blank loading spinner, sudden block pop-in</td>
+                            <td className="p-3.5 text-slate-200 bg-cyan-950/20">Smooth typing animation word-by-word</td>
+                          </tr>
+                          <tr>
+                            <td className="p-3.5 font-medium text-white">Network Protocol</td>
+                            <td className="p-3.5 text-slate-400">HTTP application/json</td>
+                            <td className="p-3.5 text-slate-200 bg-cyan-950/20">HTTP text/event-stream (SSE)</td>
+                          </tr>
+                          <tr>
+                            <td className="p-3.5 font-medium text-white">Connection Resilience</td>
+                            <td className="p-3.5 text-slate-400">High timeout risk on 1000+ token outputs</td>
+                            <td className="p-3.5 text-slate-200 bg-cyan-950/20">Zero timeouts — persistent chunk pipeline</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Model Directory */}
+                  <div className="bg-slate-900/70 border border-slate-800/80 rounded-xl p-6 shadow-sm">
+                    <h3 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-cyan-400" />
+                      Available Taka AI Models
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                      {TAKA_MODELS.map((m) => (
+                        <div key={m.id} className="p-3.5 rounded-lg bg-slate-950 border border-slate-800">
+                          <div className="flex items-center justify-between">
+                            <div className="font-mono font-semibold text-cyan-400 flex items-center gap-1.5">
+                              {m.isSearchEngine && <Search className="w-3.5 h-3.5 text-amber-400" />}
+                              {m.id}
+                            </div>
+                            <span className="text-[10px] px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-400">
+                              {m.contextWindow}
+                            </span>
+                          </div>
+                          <div className="text-xs text-slate-300 font-medium mt-1">{m.name}</div>
+                          <p className="text-slate-500 mt-1">{m.description}</p>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </main>
+              )}
+
+              {/* DASHBOARD TAB 4: CLUSTER HEALTH */}
+              {dashboardTab === 'cluster' && (
+                <div className="bg-slate-900/70 border border-slate-800/80 rounded-xl overflow-hidden shadow-sm">
+                  <div className="px-6 py-4 border-b border-slate-800/80 flex items-center justify-between bg-slate-900/40">
+                    <div className="flex items-center gap-2">
+                      <Server className="w-4 h-4 text-cyan-400" />
+                      <h2 className="text-sm font-semibold text-white">Taka Neural Cluster Matrix</h2>
+                    </div>
+                    <span className="text-xs text-emerald-400 font-medium flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                      All 8 Nodes Operational
+                    </span>
+                  </div>
+
+                  <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {Array.from({ length: 8 }).map((_, idx) => (
+                      <div key={idx} className="p-4 rounded-xl bg-slate-950 border border-slate-800/80 flex flex-col justify-between">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold text-white">Node 0{idx + 1}</span>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-950 text-emerald-400 border border-emerald-800">
+                            Online
+                          </span>
+                        </div>
+                        <div className="mt-3 space-y-1 text-[11px] text-slate-400">
+                          <div className="flex justify-between">
+                            <span>Health:</span>
+                            <span className="text-slate-200">100%</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Failover:</span>
+                            <span className="text-slate-200">Auto-Hot</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </main>
+          )}
+        </>
+      )}
+
+      {/* ========================================================= */}
+      {/* MODALS: CREATE KEY, INSPECT KEY, PASSCODES                */}
+      {/* ========================================================= */}
 
       {/* MODAL 1: CREATE API KEY */}
       {showCreateModal && (
@@ -1414,9 +1513,7 @@ while (true) {
             {!generatedKey ? (
               <form onSubmit={handleCreateKey} className="space-y-4">
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                    Key Name
-                  </label>
+                  <label className="block text-xs font-medium text-slate-300 mb-1.5">Key Name</label>
                   <input
                     type="text"
                     value={newKeyName}
@@ -1425,9 +1522,7 @@ while (true) {
                     required
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3.5 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"
                   />
-                  <p className="text-[11px] text-slate-500 mt-1">
-                    An identifying label for your application or service.
-                  </p>
+                  <p className="text-[11px] text-slate-500 mt-1">An identifying label for your application or service.</p>
                 </div>
 
                 <div className="flex justify-end gap-2 pt-2">
@@ -1477,10 +1572,13 @@ while (true) {
 
                 <div className="pt-2 flex justify-end">
                   <button
-                    onClick={() => setShowCreateModal(false)}
-                    className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-white"
+                    onClick={() => {
+                      setCustomUserKey(generatedKey.keySecret);
+                      setShowCreateModal(false);
+                    }}
+                    className="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-xs font-semibold text-white"
                   >
-                    Done
+                    Use Key in Chat
                   </button>
                 </div>
               </div>
@@ -1493,7 +1591,6 @@ while (true) {
       {inspectKey && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="bg-[#0e1626] border border-slate-800/90 rounded-2xl max-w-2xl w-full p-7 space-y-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-            {/* Header */}
             <div className="flex items-center justify-between border-b border-slate-800/80 pb-4">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
@@ -1506,9 +1603,7 @@ while (true) {
                       Active & Healthy
                     </span>
                   </h3>
-                  <p className="text-xs text-slate-400 font-mono mt-0.5">
-                    Key ID: {inspectKey.id}
-                  </p>
+                  <p className="text-xs text-slate-400 font-mono mt-0.5">Key ID: {inspectKey.id}</p>
                 </div>
               </div>
               <button
@@ -1789,9 +1884,20 @@ while (true) {
         </div>
       )}
 
-      {/* Footer */}
-      <footer className="border-t border-slate-800/60 py-4 px-6 text-center text-xs text-slate-500 bg-[#0c1220]/60">
-        Taka AI • High-Speed Neural Inference & Live Web Search Platform • Zero-Downtime Architecture
+      {/* Universal Footer */}
+      <footer className="border-t border-slate-800/60 py-3.5 px-6 text-center text-xs text-slate-500 bg-[#080d19]/80 flex flex-col sm:flex-row items-center justify-between gap-2">
+        <span>Taka AI • High-Speed Neural Inference & Autonomous Live Web Search</span>
+        <div className="flex items-center gap-4 text-slate-400">
+          <button onClick={() => setMainView('chat')} className="hover:text-cyan-300 transition-colors">
+            AI Search
+          </button>
+          <button onClick={() => { setMainView('dashboard'); setDashboardTab('keys'); }} className="hover:text-cyan-300 transition-colors">
+            Create API Key
+          </button>
+          <button onClick={() => { setMainView('dashboard'); setDashboardTab('docs'); }} className="hover:text-cyan-300 transition-colors">
+            Docs & Streaming
+          </button>
+        </div>
       </footer>
     </div>
   );
