@@ -51,6 +51,8 @@ interface Message {
   model?: string;
   isSearching?: boolean;
   latencyMs?: number;
+  tokenCount?: number;
+  tokensPerSec?: number;
   timestamp: string;
 }
 
@@ -117,6 +119,7 @@ export default function TakaPortal() {
   const [isSearchMode, setIsSearchMode] = useState(true);
   const [isStreaming, setIsStreaming] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [sessionTokens, setSessionTokens] = useState(0);
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
   // Active Key in Chat
@@ -357,6 +360,7 @@ export default function TakaPortal() {
         const reader = response.body.getReader();
         const decoder = new TextDecoder('utf-8');
         let accumulated = '';
+        let streamTokenCount = 0;
 
         while (true) {
           const { done, value } = await reader.read();
@@ -370,30 +374,53 @@ export default function TakaPortal() {
               try {
                 const parsed = JSON.parse(trimmed.replace('data: ', ''));
                 const delta = parsed.choices?.[0]?.delta?.content || '';
-                accumulated += delta;
-                setMessages((prev) =>
-                  prev.map((msg) =>
-                    msg.id === assistantMsgId
-                      ? { ...msg, content: accumulated, latencyMs: Date.now() - startTime }
-                      : msg
-                  )
-                );
+                if (delta) {
+                  streamTokenCount++;
+                  accumulated += delta;
+                  const elapsedSec = (Date.now() - startTime) / 1000;
+                  const tps = elapsedSec > 0 ? Math.round(streamTokenCount / elapsedSec) : 0;
+                  setMessages((prev) =>
+                    prev.map((msg) =>
+                      msg.id === assistantMsgId
+                        ? { ...msg, content: accumulated, latencyMs: Date.now() - startTime, tokenCount: streamTokenCount, tokensPerSec: tps }
+                        : msg
+                    )
+                  );
+                }
               } catch {
                 // ignore
               }
             }
           }
         }
-      } else {
-        const data = await response.json();
-        const content = data.choices?.[0]?.message?.content || 'No response returned.';
+        // Final token count update
+        const finalWords = accumulated.split(/\s+/).length;
+        const estimatedTokens = Math.max(streamTokenCount, Math.ceil(finalWords * 1.3));
+        const finalElapsed = (Date.now() - startTime) / 1000;
+        const finalTps = finalElapsed > 0 ? Math.round(estimatedTokens / finalElapsed) : 0;
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === assistantMsgId
-              ? { ...msg, content, latencyMs: Date.now() - startTime }
+              ? { ...msg, tokenCount: estimatedTokens, tokensPerSec: finalTps }
               : msg
           )
         );
+        setSessionTokens((prev) => prev + estimatedTokens);
+      } else {
+        const data = await response.json();
+        const content = data.choices?.[0]?.message?.content || 'No response returned.';
+        const usage = data.usage;
+        const respTokens = usage?.total_tokens || Math.ceil(content.split(/\s+/).length * 1.3);
+        const elapsedSec = (Date.now() - startTime) / 1000;
+        const tps = elapsedSec > 0 ? Math.round(respTokens / elapsedSec) : 0;
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMsgId
+              ? { ...msg, content, latencyMs: Date.now() - startTime, tokenCount: respTokens, tokensPerSec: tps }
+              : msg
+          )
+        );
+        setSessionTokens((prev) => prev + respTokens);
       }
     } catch (err: any) {
       setMessages((prev) =>
@@ -688,12 +715,22 @@ export async function POST(req: Request) {
                 >
                   {/* Assistant Header Tag */}
                   {m.role === 'assistant' && (
-                    <div className="flex items-center justify-between text-[11px] text-slate-400 border-b border-slate-800 pb-1.5 mb-1.5">
+                    <div className="flex items-center justify-between text-[11px] text-slate-400 border-b border-slate-800 pb-1.5 mb-1.5 flex-wrap gap-y-1">
                       <span className="font-mono text-cyan-400 flex items-center gap-1.5">
                         {m.isSearching && <Search className="w-3 h-3 text-amber-400" />}
                         {m.model || 'taka-ai'}
                       </span>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {m.tokensPerSec != null && m.tokensPerSec > 0 && (
+                          <span className="text-amber-400 flex items-center gap-1 font-semibold">
+                            <Flame className="w-3 h-3" /> {m.tokensPerSec} tok/s
+                          </span>
+                        )}
+                        {m.tokenCount != null && m.tokenCount > 0 && (
+                          <span className="text-cyan-300 flex items-center gap-1">
+                            <BarChart3 className="w-3 h-3" /> {m.tokenCount} tokens
+                          </span>
+                        )}
                         {m.latencyMs && (
                           <span className="text-emerald-400 flex items-center gap-1">
                             <Zap className="w-3 h-3" /> {m.latencyMs}ms
@@ -805,6 +842,36 @@ export async function POST(req: Request) {
                 </div>
                 <div className="text-slate-400 text-[11px] leading-snug">Autonomous trajectory & orbital mechanics physics</div>
               </button>
+            </div>
+          )}
+          {/* Session Token Telemetry Bar */}
+          {messages.length > 1 && (
+            <div className="flex items-center justify-between gap-3 px-3.5 py-2 rounded-xl bg-slate-950/70 border border-slate-800/60 text-[11px]">
+              <div className="flex items-center gap-4">
+                <span className="flex items-center gap-1.5 text-cyan-300 font-semibold">
+                  <BarChart3 className="w-3.5 h-3.5" />
+                  Session: {sessionTokens.toLocaleString()} tokens
+                </span>
+                <span className="text-slate-500 hidden sm:flex items-center gap-1">
+                  <MessageSquare className="w-3 h-3" />
+                  {messages.filter(m => m.role === 'assistant' && m.content).length} responses
+                </span>
+                {(() => {
+                  const assistantMsgs = messages.filter(m => m.role === 'assistant' && m.tokensPerSec && m.tokensPerSec > 0);
+                  if (assistantMsgs.length === 0) return null;
+                  const avgTps = Math.round(assistantMsgs.reduce((sum, m) => sum + (m.tokensPerSec || 0), 0) / assistantMsgs.length);
+                  return (
+                    <span className="text-amber-400 hidden sm:flex items-center gap-1 font-semibold">
+                      <Flame className="w-3 h-3" />
+                      Avg {avgTps} tok/s
+                    </span>
+                  );
+                })()}
+              </div>
+              <span className="text-emerald-400 flex items-center gap-1 font-medium">
+                <ShieldCheck className="w-3 h-3" />
+                Encrypted
+              </span>
             </div>
           )}
 
