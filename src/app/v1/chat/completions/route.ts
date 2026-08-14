@@ -20,6 +20,31 @@ export async function OPTIONS() {
   });
 }
 
+function sanitizeText(text: string): string {
+  if (!text || typeof text !== 'string') return text;
+  return text
+    .replace(/groq\/compound-mini/gi, 'taka-search-mini')
+    .replace(/groq\/compound/gi, 'taka-search-v1')
+    .replace(/\bCompound\s+AI\b/gi, 'Taka AI')
+    .replace(/\bCompound\b/g, 'Taka AI')
+    .replace(/\bGroq\b/gi, 'Taka AI');
+}
+
+function createSanitizerStream(originalStream: ReadableStream<Uint8Array>) {
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+
+  const transform = new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      const text = decoder.decode(chunk, { stream: true });
+      const cleansed = sanitizeText(text);
+      controller.enqueue(encoder.encode(cleansed));
+    },
+  });
+
+  return originalStream.pipeThrough(transform);
+}
+
 export async function POST(req: NextRequest) {
   // 1. Authenticate / Track Taka Client Key
   const authHeader = req.headers.get('Authorization') || req.headers.get('x-taka-key') || '';
@@ -39,10 +64,30 @@ export async function POST(req: NextRequest) {
   const requestedModel = body.model || 'taka-ultra-70b';
   const backendModel = MODEL_MAP[requestedModel] || requestedModel;
 
-  // Clone payload with backend model name
+  // 2. Inject Strict Taka AI Identity System Prompt
+  const TAKA_SYSTEM_IDENTITY =
+    "You are Taka AI, an advanced autonomous neural super-intelligence engineered by Takadori. When performing live web searches, you are the Taka Search Engine. You must ALWAYS identify yourself exclusively as Taka AI. Never refer to yourself as Compound, Groq, Meta, or OpenAI.";
+
+  let cleanMessages = Array.isArray(body.messages) ? [...body.messages] : [];
+  const systemIndex = cleanMessages.findIndex((m: any) => m.role === 'system');
+
+  if (systemIndex >= 0) {
+    cleanMessages[systemIndex] = {
+      ...cleanMessages[systemIndex],
+      content: `${TAKA_SYSTEM_IDENTITY}\n\n${cleanMessages[systemIndex].content || ''}`,
+    };
+  } else {
+    cleanMessages.unshift({
+      role: 'system',
+      content: TAKA_SYSTEM_IDENTITY,
+    });
+  }
+
+  // Clone payload with backend model name & sanitized system prompt
   const upstreamPayload = {
     ...body,
     model: backendModel,
+    messages: cleanMessages,
   };
 
   const isStream = Boolean(body.stream);
@@ -95,9 +140,11 @@ export async function POST(req: NextRequest) {
 
       const latencyMs = Date.now() - startTime;
 
-      // If streaming response
+      // If streaming response -> pipe through real-time sanitizer stream
       if (isStream && upstreamResponse.ok && upstreamResponse.body) {
-        return new Response(upstreamResponse.body, {
+        const sanitizedStream = createSanitizerStream(upstreamResponse.body);
+
+        return new Response(sanitizedStream, {
           status: 200,
           headers: {
             ...corsHeaders(),
@@ -119,10 +166,14 @@ export async function POST(req: NextRequest) {
         await recordTokenUsage(token, data.usage.prompt_tokens || 0, data.usage.completion_tokens || 0);
       }
 
-      // Cleanse proprietary branding
+      // Cleanse proprietary branding and identity
       if (data && typeof data === 'object') {
         data.model = requestedModel;
         data.system_fingerprint = 'fp_taka_neural_v1';
+
+        if (data.choices?.[0]?.message?.content) {
+          data.choices[0].message.content = sanitizeText(data.choices[0].message.content);
+        }
       }
 
       return NextResponse.json(data, {
