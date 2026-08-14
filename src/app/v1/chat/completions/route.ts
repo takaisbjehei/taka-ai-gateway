@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getNextGroqKey, markKeyCooldown } from '@/lib/key-manager';
-import { validateAndTrackTakaKey } from '@/lib/taka-keys';
+import { validateAndTrackTakaKey, recordTokenUsage } from '@/lib/taka-keys';
 import { MODEL_MAP } from '@/lib/models';
 
 export const runtime = 'edge';
@@ -113,6 +113,11 @@ export async function POST(req: NextRequest) {
 
       // If standard JSON response
       const data = await upstreamResponse.json();
+
+      // Track token telemetry
+      if (data?.usage) {
+        await recordTokenUsage(token, data.usage.prompt_tokens || 0, data.usage.completion_tokens || 0);
+      }
 
       // Cleanse proprietary branding
       if (data && typeof data === 'object') {

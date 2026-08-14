@@ -41,6 +41,9 @@ interface TakaKey {
   name: string;
   isActive: boolean;
   totalRequests: number;
+  totalTokens: number;
+  promptTokens: number;
+  completionTokens: number;
   lastUsedAt: string | null;
   createdAt: string;
 }
@@ -698,8 +701,13 @@ export async function POST(req: Request) {
                           <td className="px-6 py-4 text-slate-400">
                             {new Date(k.createdAt).toLocaleDateString()}
                           </td>
-                          <td className="px-6 py-4 font-semibold text-slate-200">
-                            {k.totalRequests} calls
+                          <td className="px-6 py-4">
+                            <div className="font-semibold text-slate-200">
+                              {k.totalRequests} calls
+                            </div>
+                            <div className="text-[11px] text-cyan-400 font-mono">
+                              {(k.totalTokens || 0).toLocaleString()} tokens
+                            </div>
                           </td>
                           <td className="px-6 py-4">
                             <span className="px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-950/80 border border-emerald-800/60 text-emerald-300 inline-flex items-center gap-1.5">
@@ -1356,11 +1364,52 @@ while (true) {
               </div>
             </div>
 
-            {/* Analytics Grid */}
+            {/* Token Analytics Grid */}
+            <div>
+              <h4 className="text-xs font-semibold text-slate-300 mb-3 flex items-center gap-2">
+                <Zap className="w-4 h-4 text-amber-400" />
+                Token Consumption & Bandwidth Telemetry
+              </h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800/80">
+                  <div className="text-[11px] text-slate-400 font-medium">TOTAL TOKENS</div>
+                  <div className="text-xl font-bold text-amber-400 mt-1 font-mono">
+                    {(inspectKey.totalTokens || 0).toLocaleString()}
+                  </div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">Tokens processed</div>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800/80">
+                  <div className="text-[11px] text-slate-400 font-medium">PROMPT (INPUT)</div>
+                  <div className="text-xl font-bold text-cyan-400 mt-1 font-mono">
+                    {(inspectKey.promptTokens || 0).toLocaleString()}
+                  </div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">Context tokens</div>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800/80">
+                  <div className="text-[11px] text-slate-400 font-medium">COMPLETION (OUTPUT)</div>
+                  <div className="text-xl font-bold text-emerald-400 mt-1 font-mono">
+                    {(inspectKey.completionTokens || 0).toLocaleString()}
+                  </div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">Generated tokens</div>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800/80">
+                  <div className="text-[11px] text-slate-400 font-medium">AVG / REQUEST</div>
+                  <div className="text-xl font-bold text-white mt-1 font-mono">
+                    {Math.round((inspectKey.totalTokens || 0) / Math.max(1, inspectKey.totalRequests || 1))}
+                  </div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">Tokens / call</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Live Performance Telemetry Grid */}
             <div>
               <h4 className="text-xs font-semibold text-slate-300 mb-3 flex items-center gap-2">
                 <BarChart3 className="w-4 h-4 text-cyan-400" />
-                Live Usage & Performance Telemetry
+                Live Health & Performance Telemetry
               </h4>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800/80">
