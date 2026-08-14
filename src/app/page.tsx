@@ -578,6 +578,12 @@ export async function POST(req: Request) {
             <Plus className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Make Your Own</span> API Key
           </button>
+
+          {/* Security Shield Badge */}
+          <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-950/50 border border-emerald-800/50 text-emerald-400 text-[10px] font-bold animate-pulse" title="Taka AI Neural Shield v3.0 — Active">
+            <ShieldCheck className="w-3.5 h-3.5" />
+            Shield Active
+          </div>
         </div>
       </header>
 
@@ -736,7 +742,10 @@ export async function POST(req: Request) {
                 )}
               </div>
             ))}
-            <div ref={chatBottomR          {/* Quick Starter Suggestions */}
+            <div ref={chatBottomRef} />
+          </div>
+
+          {/* Quick Starter Suggestions */}
           {messages.length <= 2 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 pt-2">
               <button
@@ -797,7 +806,6 @@ export async function POST(req: Request) {
                 <div className="text-slate-400 text-[11px] leading-snug">Autonomous trajectory & orbital mechanics physics</div>
               </button>
             </div>
-          )}      </div>
           )}
 
           {/* User Input Bar with Search Action Button */}

@@ -40,3 +40,76 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #334155;
 }
+
+/* Premium Shield Animations */
+@keyframes shield-glow {
+  0%, 100% {
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.3), 0 0 20px rgba(16, 185, 129, 0.1);
+  }
+  50% {
+    box-shadow: 0 0 16px rgba(16, 185, 129, 0.5), 0 0 40px rgba(16, 185, 129, 0.2);
+  }
+}
+
+@keyframes secure-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+@keyframes threat-scan {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+@keyframes float-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Shield Badge Glow */
+.shield-glow {
+  animation: shield-glow 2s ease-in-out infinite;
+}
+
+/* Secure Connection Indicator */
+.secure-indicator::after {
+  content: '';
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 6px #10b981;
+  animation: secure-pulse 2s ease-in-out infinite;
+}
+
+/* Smooth page entrance */
+.page-enter {
+  animation: float-in 0.4s ease-out;
+}
+
+/* Anti-select on security elements */
+.no-select {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/* Shield scan line effect for threat overlay */
+.threat-scan::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(255,50,50,0.6), transparent);
+  animation: threat-scan 3s linear infinite;
+}

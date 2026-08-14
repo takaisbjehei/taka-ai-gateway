@@ -5,6 +5,13 @@ import { MODEL_MAP } from '@/lib/models';
 
 export const runtime = 'edge';
 
+// Security: Max payload size (128KB)
+const MAX_PAYLOAD_BYTES = 131072;
+// Security: Max messages per request
+const MAX_MESSAGES = 100;
+// Security: Max content length per message (32KB)
+const MAX_MESSAGE_LENGTH = 32768;
+
 function corsHeaders() {
   return {
     'Access-Control-Allow-Origin': '*',
@@ -51,6 +58,15 @@ export async function POST(req: NextRequest) {
   const token = authHeader.replace(/^Bearer\s+/i, '').trim();
   await validateAndTrackTakaKey(token);
 
+  // Security: Check content length
+  const contentLength = parseInt(req.headers.get('content-length') || '0', 10);
+  if (contentLength > MAX_PAYLOAD_BYTES) {
+    return NextResponse.json(
+      { error: { message: 'Taka AI Security: Payload too large.', type: 'invalid_request_error' } },
+      { status: 413, headers: corsHeaders() }
+    );
+  }
+
   let body: any;
   try {
     body = await req.json();
@@ -59,6 +75,26 @@ export async function POST(req: NextRequest) {
       { error: { message: 'Invalid JSON body in request.', type: 'invalid_request_error' } },
       { status: 400, headers: corsHeaders() }
     );
+  }
+
+  // Security: Validate messages array
+  if (!Array.isArray(body.messages) || body.messages.length === 0) {
+    return NextResponse.json(
+      { error: { message: 'Taka AI Security: messages array is required.', type: 'invalid_request_error' } },
+      { status: 400, headers: corsHeaders() }
+    );
+  }
+  if (body.messages.length > MAX_MESSAGES) {
+    return NextResponse.json(
+      { error: { message: 'Taka AI Security: Too many messages in request.', type: 'invalid_request_error' } },
+      { status: 400, headers: corsHeaders() }
+    );
+  }
+  // Security: Sanitize each message content length
+  for (const msg of body.messages) {
+    if (typeof msg.content === 'string' && msg.content.length > MAX_MESSAGE_LENGTH) {
+      msg.content = msg.content.slice(0, MAX_MESSAGE_LENGTH);
+    }
   }
 
   const requestedModel = body.model || 'taka-ultra-70b';
