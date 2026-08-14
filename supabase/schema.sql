@@ -1,15 +1,14 @@
 -- =========================================================
--- TAKA AI GATEWAY - SUPABASE DATABASE SCHEMA
+-- TAKA AI GATEWAY - COMPLETE ENTERPRISE SCHEMA
 -- =========================================================
 
--- Enable UUID extension if not already enabled
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 1. Table: groq_keys
+-- 1. Table: groq_keys (Internal Neural Compute Nodes)
 CREATE TABLE IF NOT EXISTS groq_keys (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     api_key TEXT UNIQUE NOT NULL,
-    label TEXT DEFAULT 'Groq Key',
+    label TEXT DEFAULT 'Compute Node',
     is_active BOOLEAN DEFAULT TRUE,
     cooldown_until TIMESTAMPTZ DEFAULT NULL,
     total_requests BIGINT DEFAULT 0,
@@ -18,25 +17,22 @@ CREATE TABLE IF NOT EXISTS groq_keys (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Index for fast key selection
 CREATE INDEX IF NOT EXISTS idx_groq_keys_selection 
 ON groq_keys (is_active, cooldown_until, last_used_at);
 
--- 2. Table: request_logs (Optional metrics)
-CREATE TABLE IF NOT EXISTS request_logs (
+-- 2. Table: taka_api_keys (Custom Client API Keys for Developers)
+CREATE TABLE IF NOT EXISTS taka_api_keys (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    key_id UUID REFERENCES groq_keys(id) ON DELETE SET NULL,
-    model TEXT NOT NULL,
-    status_code INT NOT NULL,
-    latency_ms INT NOT NULL,
-    is_stream BOOLEAN DEFAULT FALSE,
-    error_message TEXT,
+    key_secret TEXT UNIQUE NOT NULL,
+    key_masked TEXT NOT NULL,
+    name TEXT NOT NULL DEFAULT 'Default Key',
+    is_active BOOLEAN DEFAULT TRUE,
+    total_requests BIGINT DEFAULT 0,
+    last_used_at TIMESTAMPTZ DEFAULT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 3. Atomic Function: get_next_groq_key
--- Atomically selects the least-recently-used active key not in cooldown,
--- increments request count, updates last_used_at timestamp with row lock.
+-- 3. Atomic Compute Node Rotator
 CREATE OR REPLACE FUNCTION get_next_groq_key()
 RETURNS TABLE (
     id UUID,
@@ -61,8 +57,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- 4. Function: mark_key_cooldown
--- Sets cooldown on a rate-limited key and increments failure counter
+-- 4. Cooldown Handler
 CREATE OR REPLACE FUNCTION mark_key_cooldown(
     target_key_id UUID,
     cooldown_seconds INT DEFAULT 60

@@ -1,14 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getNextGroqKey, markKeyCooldown } from '@/lib/key-manager';
+import { validateAndTrackTakaKey } from '@/lib/taka-keys';
 
 export const runtime = 'edge';
 
-// CORS response helper
+// Model translation map for Taka AI proprietary branding
+const MODEL_MAP: Record<string, string> = {
+  'taka-ultra-v1': 'llama-3.3-70b-versatile',
+  'taka-ultra': 'llama-3.3-70b-versatile',
+  'taka-flash-v1': 'llama-3.1-8b-instant',
+  'taka-flash': 'llama-3.1-8b-instant',
+  'taka-reasoning-v1': 'deepseek-r1-distill-llama-70b',
+  'taka-reasoning': 'deepseek-r1-distill-llama-70b',
+  'taka-core-v1': 'mixtral-8x7b-32768',
+  'taka-core': 'mixtral-8x7b-32768',
+};
+
 function corsHeaders() {
   return {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, X-Taka-Master-Key',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, X-Taka-Key',
   };
 }
 
@@ -20,24 +32,10 @@ export async function OPTIONS() {
 }
 
 export async function POST(req: NextRequest) {
-  // 1. Optional Master Auth Check
-  const masterToken = process.env.PROXY_AUTH_TOKEN;
-  if (masterToken) {
-    const authHeader = req.headers.get('Authorization') || req.headers.get('x-taka-master-key');
-    const token = authHeader?.replace(/^Bearer\s+/i, '').trim();
-    if (!token || token !== masterToken) {
-      return NextResponse.json(
-        {
-          error: {
-            message: 'Unauthorized: Invalid or missing Master API token for Taka AI Gateway.',
-            type: 'authentication_error',
-            code: 'invalid_api_key',
-          },
-        },
-        { status: 401, headers: corsHeaders() }
-      );
-    }
-  }
+  // 1. Authenticate / Track Taka Client Key
+  const authHeader = req.headers.get('Authorization') || req.headers.get('x-taka-key') || '';
+  const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+  await validateAndTrackTakaKey(token);
 
   let body: any;
   try {
@@ -49,15 +47,20 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Ensure default model if not specified
-  if (!body.model) {
-    body.model = 'llama-3.3-70b-versatile';
-  }
+  const requestedModel = body.model || 'taka-ultra-v1';
+  const backendModel = MODEL_MAP[requestedModel] || requestedModel;
+
+  // Clone payload with backend model name
+  const upstreamPayload = {
+    ...body,
+    model: backendModel,
+  };
 
   const isStream = Boolean(body.stream);
   const maxRetries = 5;
   let attempt = 0;
-  let lastErrorMsg = 'Unknown error';
+  let lastErrorMsg = 'Internal Gateway Error';
+  const startTime = Date.now();
 
   while (attempt < maxRetries) {
     attempt++;
@@ -69,7 +72,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           error: {
-            message: `Taka AI Key Pool Error: ${e.message || 'No available keys'}`,
+            message: `Taka AI Gateway: All compute clusters are currently at peak capacity. Please retry shortly.`,
             type: 'server_error',
           },
         },
@@ -78,76 +81,75 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-      const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      const upstreamResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${currentKey.apiKey}`,
           'Content-Type': 'application/json',
-          'User-Agent': 'TakaAIGateway/1.0',
+          'User-Agent': 'TakaAIEngine/1.0',
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify(upstreamPayload),
       });
 
-      // Handle Rate Limit (HTTP 429) -> Auto Failover
-      if (groqResponse.status === 429) {
-        console.warn(`[Taka AI] Key ${currentKey.label} hit rate limit (429). Triggering automatic failover.`);
+      // Handle Rate Limit (HTTP 429) -> Auto Failover to next node
+      if (upstreamResponse.status === 429) {
         await markKeyCooldown(currentKey.id, Number(process.env.RATE_LIMIT_COOLDOWN_SECONDS || 60));
-        lastErrorMsg = `Key ${currentKey.label} rate limited (429)`;
-        continue; // Retry with next key in pool
+        lastErrorMsg = 'Cluster node rebalancing';
+        continue;
       }
 
-      // Handle other non-200 errors that might be key-related (e.g. 401)
-      if (groqResponse.status === 401) {
-        console.error(`[Taka AI] Key ${currentKey.label} returned 401 Invalid Key. Marking cooldown.`);
-        await markKeyCooldown(currentKey.id, 3600); // 1 hr cooldown
-        lastErrorMsg = `Key ${currentKey.label} invalid (401)`;
-        continue; // Retry with next key in pool
+      if (upstreamResponse.status === 401) {
+        await markKeyCooldown(currentKey.id, 3600);
+        lastErrorMsg = 'Cluster node sync';
+        continue;
       }
 
-      // If streaming response requested
-      if (isStream && groqResponse.ok && groqResponse.body) {
-        const maskedKey = `${currentKey.apiKey.slice(0, 8)}...${currentKey.apiKey.slice(-4)}`;
-        return new Response(groqResponse.body, {
+      const latencyMs = Date.now() - startTime;
+
+      // If streaming response
+      if (isStream && upstreamResponse.ok && upstreamResponse.body) {
+        return new Response(upstreamResponse.body, {
           status: 200,
           headers: {
             ...corsHeaders(),
             'Content-Type': 'text/event-stream; charset=utf-8',
             'Cache-Control': 'no-cache, no-transform',
             'Connection': 'keep-alive',
-            'X-Taka-Key-Label': currentKey.label,
-            'X-Taka-Key-Used': maskedKey,
-            'X-Taka-Attempt': String(attempt),
+            'X-Taka-Model': requestedModel,
+            'X-Taka-Engine': 'active',
+            'X-Taka-Latency-Ms': String(latencyMs),
           },
         });
       }
 
       // If standard JSON response
-      const data = await groqResponse.json();
-      const maskedKey = `${currentKey.apiKey.slice(0, 8)}...${currentKey.apiKey.slice(-4)}`;
+      const data = await upstreamResponse.json();
+
+      // Cleanse proprietary branding
+      if (data && typeof data === 'object') {
+        data.model = requestedModel;
+        data.system_fingerprint = 'fp_taka_neural_v1';
+      }
 
       return NextResponse.json(data, {
-        status: groqResponse.status,
+        status: upstreamResponse.status,
         headers: {
           ...corsHeaders(),
-          'X-Taka-Key-Label': currentKey.label,
-          'X-Taka-Key-Used': maskedKey,
-          'X-Taka-Attempt': String(attempt),
+          'X-Taka-Model': requestedModel,
+          'X-Taka-Engine': 'active',
+          'X-Taka-Latency-Ms': String(latencyMs),
         },
       });
     } catch (fetchErr: any) {
-      console.error(`[Taka AI] Network error calling Groq with key ${currentKey.label}:`, fetchErr);
       lastErrorMsg = fetchErr.message;
-      // retry next key
     }
   }
 
-  // If exhausted retries
   return NextResponse.json(
     {
       error: {
-        message: `Taka AI Gateway failed after ${maxRetries} failover attempts. Last error: ${lastErrorMsg}`,
+        message: `Taka AI Gateway: Temporary load capacity reached. Please try again. (${lastErrorMsg})`,
         type: 'rate_limit_exceeded',
-        code: 'all_keys_busy',
       },
     },
     { status: 429, headers: corsHeaders() }
