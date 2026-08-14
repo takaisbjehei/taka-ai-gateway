@@ -1039,6 +1039,93 @@ export async function POST(req: Request) {
               </div>
             </div>
 
+            {/* Streaming Guide Card */}
+            <div className="bg-slate-900/70 border border-slate-800/80 rounded-xl p-6 shadow-sm space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-amber-400" />
+                  Real-Time Streaming (SSE) Guide
+                </h3>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-950 border border-emerald-800 text-emerald-400">
+                  Sub-120ms TTFT
+                </span>
+              </div>
+              
+              <p className="text-xs text-slate-300">
+                Streaming sends text tokens to your application in real-time as they are being generated, eliminating waiting time and providing instant feedback to users.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                <div className="p-3.5 rounded-lg bg-slate-950 border border-slate-800">
+                  <div className="text-amber-400 font-semibold flex items-center gap-1.5">
+                    1. Enable Flag
+                  </div>
+                  <p className="text-slate-400 mt-1">
+                    Pass <code className="text-cyan-300 bg-slate-900 px-1 py-0.5 rounded font-mono">"stream": true</code> in your JSON payload or <code className="text-cyan-300 bg-slate-900 px-1 py-0.5 rounded font-mono">stream=True</code> in the SDK.
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-lg bg-slate-950 border border-slate-800">
+                  <div className="text-emerald-400 font-semibold flex items-center gap-1.5">
+                    2. Protocol Format
+                  </div>
+                  <p className="text-slate-400 mt-1">
+                    Delivered via HTTP standard Server-Sent Events (<code className="text-cyan-300 font-mono">text/event-stream</code>) with <code className="text-cyan-300 font-mono">data: &#123;...&#125;</code> chunks.
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-lg bg-slate-950 border border-slate-800">
+                  <div className="text-indigo-400 font-semibold flex items-center gap-1.5">
+                    3. Stream Termination
+                  </div>
+                  <p className="text-slate-400 mt-1">
+                    The stream terminates gracefully when the server emits the final <code className="text-cyan-300 bg-slate-900 px-1 py-0.5 rounded font-mono">data: [DONE]</code> message.
+                  </p>
+                </div>
+              </div>
+
+              {/* Streaming Code Example */}
+              <div className="bg-slate-950 rounded-xl p-4 border border-slate-800">
+                <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                  Frontend Streaming Implementation (Vanilla JavaScript / React)
+                </div>
+                <pre className="font-mono text-xs text-slate-300 overflow-x-auto">
+                  <code>{`// 1. Fetch streaming response
+const response = await fetch("${getBaseUrl()}/chat/completions", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "Authorization": "Bearer ${takaKeys[0]?.keySecret || 'taka_live_your_key'}"
+  },
+  body: JSON.stringify({
+    model: "taka-search-v1",
+    messages: [{ role: "user", content: "Tell me a short story." }],
+    stream: true // <-- Activate Streaming
+  })
+});
+
+// 2. Read live token chunks
+const reader = response.body.getReader();
+const decoder = new TextDecoder();
+let resultText = "";
+
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+  const chunk = decoder.decode(value);
+  const lines = chunk.split("\\n");
+  for (const line of lines) {
+    if (line.startsWith("data: ") && line !== "data: [DONE]") {
+      const data = JSON.parse(line.slice(6));
+      resultText += data.choices[0]?.delta?.content || "";
+      console.log(resultText); // Updates live on every token!
+    }
+  }
+}`}</code>
+                </pre>
+              </div>
+            </div>
+
             {/* Model Directory Card */}
             <div className="bg-slate-900/70 border border-slate-800/80 rounded-xl p-6 shadow-sm">
               <h3 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
