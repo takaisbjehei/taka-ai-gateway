@@ -100,6 +100,7 @@ export default function TakaPortal() {
       const data = await res.json();
       if (data.success) {
         localStorage.setItem('taka_auth_token', data.sessionToken || 'taka_active');
+        setAccessCodeInput('');
         setIsAuthenticated(true);
         fetchKeysAndStats();
       } else {
@@ -114,6 +115,8 @@ export default function TakaPortal() {
 
   const handleLogout = () => {
     localStorage.removeItem('taka_auth_token');
+    setAccessCodeInput('');
+    setAuthError('');
     setIsAuthenticated(false);
   };
 
