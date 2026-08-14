@@ -23,7 +23,9 @@ import {
   Lock,
   ArrowRight,
   LogOut,
-  Info
+  Info,
+  Ticket,
+  UserCheck
 } from 'lucide-react';
 import { TAKA_MODELS } from '@/lib/models';
 
@@ -36,6 +38,16 @@ interface TakaKey {
   totalRequests: number;
   lastUsedAt: string | null;
   createdAt: string;
+}
+
+interface AccessCodeRecord {
+  id: string;
+  code: string;
+  label: string;
+  is_one_time: boolean;
+  is_used: boolean;
+  created_at: string;
+  used_at?: string | null;
 }
 
 interface StatsData {
@@ -57,20 +69,28 @@ export default function TakaPortal() {
   const [isVerifyingCode, setIsVerifyingCode] = useState(false);
 
   // App State
-  const [activeTab, setActiveTab] = useState<'keys' | 'playground' | 'docs' | 'cluster'>('keys');
+  const [activeTab, setActiveTab] = useState<'keys' | 'access-codes' | 'playground' | 'docs' | 'cluster'>('keys');
   const [takaKeys, setTakaKeys] = useState<TakaKey[]>([]);
+  const [accessCodesList, setAccessCodesList] = useState<AccessCodeRecord[]>([]);
   const [stats, setStats] = useState<StatsData | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Modal State
+  // Modal State: Create API Key
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newKeyName, setNewKeyName] = useState('');
   const [generatedKey, setGeneratedKey] = useState<TakaKey | null>(null);
   const [isCreatingKey, setIsCreatingKey] = useState(false);
 
+  // Modal State: Create One-Time Passcode
+  const [showPasscodeModal, setShowPasscodeModal] = useState(false);
+  const [passcodeLabel, setPasscodeLabel] = useState('');
+  const [customPasscode, setCustomPasscode] = useState('');
+  const [isOneTimePass, setIsOneTimePass] = useState(true);
+  const [isCreatingPasscode, setIsCreatingPasscode] = useState(false);
+
   // Playground State
   const [selectedModel, setSelectedModel] = useState('taka-search-v1');
-  const [promptInput, setPromptInput] = useState('What are the latest breakthrough developments in fusion energy this year?');
+  const [promptInput, setPromptInput] = useState('What are the latest breakthrough developments in quantum computing?');
   const [isStreaming, setIsStreaming] = useState(true);
   const [chatOutput, setChatOutput] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -102,9 +122,9 @@ export default function TakaPortal() {
         localStorage.setItem('taka_auth_token', data.sessionToken || 'taka_active');
         setAccessCodeInput('');
         setIsAuthenticated(true);
-        fetchKeysAndStats();
+        fetchData();
       } else {
-        setAuthError(data.error || 'Invalid access code. Please try again.');
+        setAuthError(data.error || 'Invalid or expired access code.');
       }
     } catch (err: any) {
       setAuthError('Connection error. Please try again.');
@@ -120,17 +140,20 @@ export default function TakaPortal() {
     setIsAuthenticated(false);
   };
 
-  const fetchKeysAndStats = async () => {
+  const fetchData = async () => {
     try {
-      const [keysRes, statsRes] = await Promise.all([
+      const [keysRes, statsRes, codesRes] = await Promise.all([
         fetch('/api/taka-keys'),
         fetch('/api/stats'),
+        fetch('/api/access-codes'),
       ]);
       const keysData = await keysRes.json();
       const statsData = await statsRes.json();
+      const codesData = await codesRes.json();
 
       if (keysData.success) setTakaKeys(keysData.keys);
       if (statsData.success) setStats(statsData.stats);
+      if (codesData.success) setAccessCodesList(codesData.codes);
     } catch (e) {
       console.error(e);
     }
@@ -138,8 +161,8 @@ export default function TakaPortal() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      fetchKeysAndStats();
-      const timer = setInterval(fetchKeysAndStats, 8000);
+      fetchData();
+      const timer = setInterval(fetchData, 8000);
       return () => clearInterval(timer);
     }
   }, [isAuthenticated]);
@@ -156,7 +179,7 @@ export default function TakaPortal() {
       const data = await res.json();
       if (data.success) {
         setGeneratedKey(data.key);
-        fetchKeysAndStats();
+        fetchData();
       }
     } catch (err) {
       console.error(err);
@@ -165,11 +188,48 @@ export default function TakaPortal() {
     }
   };
 
+  const handleCreatePasscode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsCreatingPasscode(true);
+    try {
+      const res = await fetch('/api/access-codes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          label: passcodeLabel || 'Client One-Time Pass',
+          code: customPasscode || undefined,
+          isOneTime: isOneTimePass,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setShowPasscodeModal(false);
+        setPasscodeLabel('');
+        setCustomPasscode('');
+        fetchData();
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsCreatingPasscode(false);
+    }
+  };
+
   const handleDeleteKey = async (id: string) => {
     if (!confirm('Are you sure you want to revoke this API key?')) return;
     try {
       await fetch(`/api/taka-keys?id=${id}`, { method: 'DELETE' });
-      fetchKeysAndStats();
+      fetchData();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDeletePasscode = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this access code?')) return;
+    try {
+      await fetch(`/api/access-codes?id=${id}`, { method: 'DELETE' });
+      fetchData();
     } catch (err) {
       console.error(err);
     }
@@ -239,7 +299,7 @@ export default function TakaPortal() {
       setChatOutput(`[Error]: ${err.message}`);
     } finally {
       setIsGenerating(false);
-      fetchKeysAndStats();
+      fetchData();
     }
   };
 
@@ -255,17 +315,17 @@ export default function TakaPortal() {
     if (lang === 'python') {
       return `from openai import OpenAI
 
-# Connect to your Taka AI API Gateway
+# Connect to Taka AI API Gateway
 client = OpenAI(
     base_url="${baseUrl}",
     api_key="${sampleKey}"
 )
 
-# Use taka-search-v1 for Live Web Search, or taka-max-120b for Ultra Intelligence
+# Call taka-search-v1 (Live Web Search) or taka-max-120b
 response = client.chat.completions.create(
-    model="taka-search-v1", # or taka-max-120b, taka-flash-8b, taka-qwen-27b
+    model="taka-search-v1",
     messages=[
-        {"role": "user", "content": "Search the web and summarize latest AI news."}
+        {"role": "user", "content": "Search the web and summarize today's AI breakthroughs."}
     ],
     stream=True
 )
@@ -277,7 +337,7 @@ for chunk in response:
     if (lang === 'node') {
       return `import OpenAI from "openai";
 
-// Connect to your Taka AI API Gateway
+// Connect to Taka AI API Gateway
 const client = new OpenAI({
   baseURL: "${baseUrl}",
   apiKey: "${sampleKey}",
@@ -286,7 +346,7 @@ const client = new OpenAI({
 async function main() {
   const stream = await client.chat.completions.create({
     model: "taka-search-v1",
-    messages: [{ role: "user", content: "Search latest tech breakthroughs." }],
+    messages: [{ role: "user", content: "Search latest tech news." }],
     stream: true,
   });
 
@@ -343,7 +403,7 @@ export async function POST(req: Request) {
             </div>
             <h1 className="text-xl font-bold tracking-tight text-white">Taka AI Gateway</h1>
             <p className="text-xs text-slate-400">
-              Enter your access pass or one-time redemption code to unlock the developer portal.
+              Enter your access pass or one-time redemption code to unlock the developer platform.
             </p>
           </div>
 
@@ -389,7 +449,7 @@ export async function POST(req: Request) {
 
           <div className="pt-2 border-t border-slate-800/80 text-center">
             <p className="text-[11px] text-slate-500">
-              Protected by Supabase One-Time Access Security
+              Protected by Taka AI Enterprise Security
             </p>
           </div>
         </div>
@@ -419,7 +479,7 @@ export async function POST(req: Request) {
           </div>
         </div>
 
-        {/* Center Tabs */}
+        {/* Center Navigation Tabs */}
         <div className="hidden md:flex items-center gap-1 bg-slate-900/90 p-1 rounded-xl border border-slate-800">
           <button
             onClick={() => setActiveTab('keys')}
@@ -429,6 +489,15 @@ export async function POST(req: Request) {
           >
             <Key className="w-3.5 h-3.5 text-cyan-400" />
             API Keys
+          </button>
+          <button
+            onClick={() => setActiveTab('access-codes')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-2 transition-all ${
+              activeTab === 'access-codes' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Ticket className="w-3.5 h-3.5 text-amber-400" />
+            Access Passcodes
           </button>
           <button
             onClick={() => setActiveTab('playground')}
@@ -454,7 +523,7 @@ export async function POST(req: Request) {
               activeTab === 'cluster' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Activity className="w-3.5 h-3.5 text-amber-400" />
+            <Activity className="w-3.5 h-3.5 text-cyan-400" />
             Cluster Health
           </button>
         </div>
@@ -482,7 +551,7 @@ export async function POST(req: Request) {
         </div>
       </header>
 
-      {/* Main Container */}
+      {/* Main Content */}
       <main className="flex-1 max-w-6xl w-full mx-auto p-6 space-y-6">
         {/* Metric Bar */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -497,7 +566,7 @@ export async function POST(req: Request) {
             </div>
             <p className="text-[11px] text-emerald-400/90 mt-1 flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              Round-Robin Load Balancing Active
+              Round-Robin Engine Active
             </p>
           </div>
 
@@ -644,7 +713,112 @@ export async function POST(req: Request) {
           </div>
         )}
 
-        {/* TAB 2: PLAYGROUND & SEARCH */}
+        {/* TAB 2: ACCESS PASSCODES MANAGEMENT */}
+        {activeTab === 'access-codes' && (
+          <div className="space-y-6">
+            <div className="bg-slate-900/70 border border-slate-800/80 rounded-xl overflow-hidden shadow-sm">
+              <div className="px-6 py-5 border-b border-slate-800/80 flex items-center justify-between bg-slate-900/40">
+                <div>
+                  <h2 className="text-base font-semibold text-white flex items-center gap-2">
+                    <Ticket className="w-4 h-4 text-amber-400" />
+                    One-Time Access Passcodes
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Generate single-use or permanent access codes for clients to unlock the developer platform.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowPasscodeModal(true)}
+                  className="px-3.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-xs font-semibold text-white flex items-center gap-1.5 transition-colors shadow-sm"
+                >
+                  <Plus className="w-4 h-4" />
+                  Generate New Passcode
+                </button>
+              </div>
+
+              {/* Passcodes Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-950/60 border-b border-slate-800 text-slate-400 font-medium">
+                    <tr>
+                      <th className="px-6 py-3">LABEL</th>
+                      <th className="px-6 py-3">PASSCODE</th>
+                      <th className="px-6 py-3">TYPE</th>
+                      <th className="px-6 py-3">STATUS</th>
+                      <th className="px-6 py-3">CREATED</th>
+                      <th className="px-6 py-3 text-right">ACTIONS</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60 text-slate-300">
+                    {accessCodesList.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="px-6 py-8 text-center text-slate-500">
+                          No passcodes found. Click "Generate New Passcode" above.
+                        </td>
+                      </tr>
+                    ) : (
+                      accessCodesList.map((c) => (
+                        <tr key={c.id} className="hover:bg-slate-800/20 transition-colors">
+                          <td className="px-6 py-4 font-semibold text-white flex items-center gap-2">
+                            <span className={`w-2 h-2 rounded-full ${c.is_used ? 'bg-slate-600' : 'bg-amber-400'}`} />
+                            {c.label}
+                          </td>
+                          <td className="px-6 py-4 font-mono">
+                            <div className="flex items-center gap-2">
+                              <code className="bg-slate-950 px-2.5 py-1 rounded border border-slate-800 text-cyan-300 font-bold">
+                                {c.code}
+                              </code>
+                              <button
+                                onClick={() => copyToClipboard(c.code, `code-${c.id}`)}
+                                className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors"
+                                title="Copy Code"
+                              >
+                                {copiedId === `code-${c.id}` ? (
+                                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                ) : (
+                                  <Copy className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-slate-400">
+                            {c.is_one_time ? 'One-Time Use' : 'Permanent'}
+                          </td>
+                          <td className="px-6 py-4">
+                            {c.is_used ? (
+                              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-800 border border-slate-700 text-slate-400 inline-flex items-center gap-1.5">
+                                Redeemed
+                              </span>
+                            ) : (
+                              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-950/80 border border-emerald-800/60 text-emerald-300 inline-flex items-center gap-1.5">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                Available
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-slate-400">
+                            {new Date(c.created_at).toLocaleDateString()}
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <button
+                              onClick={() => handleDeletePasscode(c.id)}
+                              className="p-1.5 rounded-md hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 transition-colors"
+                              title="Delete Passcode"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 3: PLAYGROUND & SEARCH */}
         {activeTab === 'playground' && (
           <div className="bg-slate-900/70 border border-slate-800/80 rounded-xl overflow-hidden shadow-sm flex flex-col">
             <div className="px-6 py-4 border-b border-slate-800/80 flex items-center justify-between bg-slate-900/40">
@@ -742,7 +916,7 @@ export async function POST(req: Request) {
           </div>
         )}
 
-        {/* TAB 3: API CONNECTION GUIDE */}
+        {/* TAB 4: API CONNECTION GUIDE */}
         {activeTab === 'docs' && (
           <div className="space-y-6">
             {/* Quick Connection Info Card */}
@@ -866,7 +1040,7 @@ export async function POST(req: Request) {
           </div>
         )}
 
-        {/* TAB 4: CLUSTER HEALTH */}
+        {/* TAB 5: CLUSTER HEALTH */}
         {activeTab === 'cluster' && (
           <div className="bg-slate-900/70 border border-slate-800/80 rounded-xl overflow-hidden shadow-sm">
             <div className="px-6 py-4 border-b border-slate-800/80 flex items-center justify-between bg-slate-900/40">
@@ -906,7 +1080,7 @@ export async function POST(req: Request) {
         )}
       </main>
 
-      {/* CREATE API KEY MODAL */}
+      {/* MODAL 1: CREATE API KEY */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-[#0f172a] border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-5 shadow-2xl">
@@ -997,6 +1171,84 @@ export async function POST(req: Request) {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: CREATE ONE-TIME PASSCODE */}
+      {showPasscodeModal && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#0f172a] border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-5 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Ticket className="w-4 h-4 text-amber-400" />
+                Generate New Access Passcode
+              </h3>
+              <button
+                onClick={() => setShowPasscodeModal(false)}
+                className="text-slate-400 hover:text-white text-xs"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleCreatePasscode} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                  Passcode Label / Client Name
+                </label>
+                <input
+                  type="text"
+                  value={passcodeLabel}
+                  onChange={(e) => setPasscodeLabel(e.target.value)}
+                  placeholder="e.g. VIP Client Access"
+                  required
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3.5 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                  Custom Code (Optional, Auto-Generated if Blank)
+                </label>
+                <input
+                  type="text"
+                  value={customPasscode}
+                  onChange={(e) => setCustomPasscode(e.target.value)}
+                  placeholder="e.g. TAKA-USER-9901"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3.5 py-2.5 text-xs font-mono uppercase text-slate-200 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div className="pt-1">
+                <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isOneTimePass}
+                    onChange={(e) => setIsOneTimePass(e.target.checked)}
+                    className="rounded bg-slate-950 border-slate-800 text-amber-500 focus:ring-0"
+                  />
+                  One-Time Use Only (Expires immediately after 1st login)
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setShowPasscodeModal(false)}
+                  className="px-4 py-2 rounded-lg bg-slate-800 text-xs font-medium text-slate-300 hover:bg-slate-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isCreatingPasscode}
+                  className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-xs font-semibold text-white transition-colors"
+                >
+                  {isCreatingPasscode ? 'Generating...' : 'Generate Passcode'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
