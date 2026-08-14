@@ -56,8 +56,14 @@ export async function POST(req: NextRequest) {
   // 1. Authenticate / Track Taka Client Key
   const authHeader = req.headers.get('Authorization') || req.headers.get('x-taka-key') || '';
   const token = authHeader.replace(/^Bearer\s+/i, '').trim();
-  await validateAndTrackTakaKey(token);
+  const isValidKey = await validateAndTrackTakaKey(token);
 
+  if (!isValidKey) {
+    return NextResponse.json(
+      { error: { message: 'Taka AI Security: Invalid or missing API key.', type: 'authentication_error' } },
+      { status: 401, headers: corsHeaders() }
+    );
+  }
   // Security: Check content length
   const contentLength = parseInt(req.headers.get('content-length') || '0', 10);
   if (contentLength > MAX_PAYLOAD_BYTES) {

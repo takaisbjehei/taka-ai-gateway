@@ -195,8 +195,33 @@ export async function recordTokenUsage(bearerToken: string, promptTokens: number
 }
 
 export async function validateAndTrackTakaKey(bearerToken: string): Promise<boolean> {
-  if (!bearerToken) return true;
-  // Track default 1-request invocation if token usage isn't explicitly supplied
-  await recordTokenUsage(bearerToken, 20, 45);
-  return true;
+  if (!bearerToken) return false;
+
+  const supabase = getSupabase();
+  if (supabase) {
+    try {
+      const { data } = await supabase
+        .from('taka_api_keys')
+        .select('is_active')
+        .eq('key_secret', bearerToken)
+        .limit(1);
+
+      if (data && data.length > 0) {
+        if (!data[0].is_active) return false;
+        // Track default 1-request invocation if token usage isn't explicitly supplied
+        await recordTokenUsage(bearerToken, 20, 45);
+        return true;
+      }
+    } catch {
+      // fallback
+    }
+  }
+
+  const found = inMemoryTakaKeys.find((k) => k.keySecret === bearerToken);
+  if (found && found.isActive) {
+    await recordTokenUsage(bearerToken, 20, 45);
+    return true;
+  }
+
+  return false;
 }

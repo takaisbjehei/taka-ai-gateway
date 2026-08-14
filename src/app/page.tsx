@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
 import { 
   Key, 
   Terminal, 
@@ -2046,18 +2047,26 @@ export async function POST(req: Request) {
           <span className="text-slate-600 hidden md:inline">•</span>
           <span className="text-slate-500 hidden md:inline">Autonomous Arc Neural Super-Intelligence</span>
         </div>
-        <div className="flex items-center gap-4 text-xs font-medium text-slate-400">
+        <div className="flex items-center gap-4 text-xs font-medium text-slate-400 flex-wrap justify-center sm:justify-end">
+          <Link href="/terms" className="hover:text-cyan-300 transition-colors flex items-center gap-1">
+            <ShieldCheck className="w-3 h-3" />
+            Terms
+          </Link>
+          <Link href="/privacy" className="hover:text-cyan-300 transition-colors flex items-center gap-1">
+            <Lock className="w-3 h-3" />
+            Privacy
+          </Link>
           <button onClick={() => setMainView('chat')} className="hover:text-cyan-300 transition-colors flex items-center gap-1">
             <Search className="w-3 h-3 text-amber-400" />
-            AI Search
+            Search
           </button>
           <button onClick={() => { setMainView('dashboard'); setDashboardTab('keys'); }} className="hover:text-cyan-300 transition-colors flex items-center gap-1">
             <Key className="w-3 h-3 text-cyan-400" />
-            Developer Gateway
+            Gateway
           </button>
           <button onClick={() => { setMainView('dashboard'); setDashboardTab('docs'); }} className="hover:text-cyan-300 transition-colors flex items-center gap-1">
             <BookOpen className="w-3 h-3 text-indigo-400" />
-            API & Streaming
+            Docs
           </button>
         </div>
       </footer>

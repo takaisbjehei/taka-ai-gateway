@@ -7,12 +7,7 @@ interface MemoryCode {
   isUsed: boolean;
 }
 
-const inMemoryCodes: MemoryCode[] = [
-  { code: 'TAKA-VIP-8899', label: 'VIP One-Time Pass', isOneTime: true, isUsed: false },
-  { code: 'TAKA-VIP-7722', label: 'VIP One-Time Pass', isOneTime: true, isUsed: false },
-  { code: 'TAKA-VIP-3344', label: 'VIP One-Time Pass', isOneTime: true, isUsed: false },
-  { code: 'TAKA-MASTER-2026', label: 'Master Admin Pass', isOneTime: false, isUsed: false },
-];
+const inMemoryCodes: MemoryCode[] = [];
 
 export async function verifyAccessCode(inputCode: string): Promise<{ valid: boolean; message: string }> {
   const cleanCode = (inputCode || '').trim().toUpperCase();
@@ -21,7 +16,7 @@ export async function verifyAccessCode(inputCode: string): Promise<{ valid: bool
   }
 
   // 1. Check Master Admin Code from environment variable
-  const adminCode = (process.env.ADMIN_ACCESS_CODE || 'TAKA-MASTER-2026').trim().toUpperCase();
+  const adminCode = (process.env.ADMIN_ACCESS_CODE || '').trim().toUpperCase();
   if (cleanCode === adminCode) {
     return { valid: true, message: 'Admin access granted.' };
   }
