@@ -966,10 +966,10 @@ export async function POST(req: Request) {
                       Access Passcode
                     </label>
                     <input
-                      type="text"
+                      type="password"
                       value={accessCodeInput}
                       onChange={(e) => setAccessCodeInput(e.target.value)}
-                      placeholder="e.g. TAKA-MASTER-2026 or TAKA-VIP-8899"
+                      placeholder="Enter Developer Access Code"
                       required
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm font-mono text-cyan-300 placeholder:text-slate-600 focus:outline-none focus:border-cyan-500 transition-all uppercase tracking-widest text-center"
                     />
