@@ -1047,59 +1047,214 @@ export async function POST(req: Request) {
               </div>
             </div>
 
-            {/* Streaming Guide Card */}
-            <div className="bg-slate-900/70 border border-slate-800/80 rounded-xl p-6 shadow-sm space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                  <Zap className="w-4 h-4 text-amber-400" />
-                  Real-Time Streaming (SSE) Guide
-                </h3>
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-950 border border-emerald-800 text-emerald-400">
-                  Sub-120ms TTFT
-                </span>
-              </div>
-              
-              <p className="text-xs text-slate-300">
-                Streaming sends text tokens to your application in real-time as they are being generated, eliminating waiting time and providing instant feedback to users.
-              </p>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-                <div className="p-3.5 rounded-lg bg-slate-950 border border-slate-800">
-                  <div className="text-amber-400 font-semibold flex items-center gap-1.5">
-                    1. Enable Flag
-                  </div>
-                  <p className="text-slate-400 mt-1">
-                    Pass <code className="text-cyan-300 bg-slate-900 px-1 py-0.5 rounded font-mono">"stream": true</code> in your JSON payload or <code className="text-cyan-300 bg-slate-900 px-1 py-0.5 rounded font-mono">stream=True</code> in the SDK.
+            {/* EVERYTHING YOU NEED TO KNOW ABOUT STREAMING ON TAKA AI */}
+            <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-7 shadow-lg space-y-6">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-5">
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2.5">
+                    <Zap className="w-5 h-5 text-amber-400 fill-amber-400/20" />
+                    Everything You Need to Know About Streaming on Taka AI
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Complete reference for ultra-low latency Server-Sent Events (SSE), multi-language implementation, and token flow.
                   </p>
                 </div>
-
-                <div className="p-3.5 rounded-lg bg-slate-950 border border-slate-800">
-                  <div className="text-emerald-400 font-semibold flex items-center gap-1.5">
-                    2. Protocol Format
-                  </div>
-                  <p className="text-slate-400 mt-1">
-                    Delivered via HTTP standard Server-Sent Events (<code className="text-cyan-300 font-mono">text/event-stream</code>) with <code className="text-cyan-300 font-mono">data: &#123;...&#125;</code> chunks.
-                  </p>
-                </div>
-
-                <div className="p-3.5 rounded-lg bg-slate-950 border border-slate-800">
-                  <div className="text-indigo-400 font-semibold flex items-center gap-1.5">
-                    3. Stream Termination
-                  </div>
-                  <p className="text-slate-400 mt-1">
-                    The stream terminates gracefully when the server emits the final <code className="text-cyan-300 bg-slate-900 px-1 py-0.5 rounded font-mono">data: [DONE]</code> message.
-                  </p>
+                <div className="flex items-center gap-2">
+                  <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-950/90 border border-emerald-800 text-emerald-400 flex items-center gap-1.5 shadow-sm">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    TTFT ~100–120ms
+                  </span>
+                  <span className="px-3 py-1 rounded-full text-xs font-semibold bg-cyan-950/90 border border-cyan-800 text-cyan-400">
+                    SSE Protocol
+                  </span>
                 </div>
               </div>
 
-              {/* Streaming Code Example */}
-              <div className="bg-slate-950 rounded-xl p-4 border border-slate-800">
-                <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                  Frontend Streaming Implementation (Vanilla JavaScript / React)
+              {/* 1. Comparison Matrix */}
+              <div className="space-y-2.5">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  1. Real-Time Streaming vs Standard Request
+                </h4>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border border-slate-800 rounded-xl overflow-hidden">
+                    <thead className="bg-slate-950/80 text-slate-400 font-semibold border-b border-slate-800">
+                      <tr>
+                        <th className="p-3.5">METRIC / FEATURE</th>
+                        <th className="p-3.5 text-slate-400">STANDARD REQUEST (NO STREAM)</th>
+                        <th className="p-3.5 text-cyan-300 font-bold bg-cyan-950/30">TAKA STREAMING (stream=true)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60 text-slate-300">
+                      <tr>
+                        <td className="p-3.5 font-medium text-white">Time to First Token (TTFT)</td>
+                        <td className="p-3.5 text-slate-400">2,000ms – 6,000ms (Waits for full text)</td>
+                        <td className="p-3.5 text-emerald-400 font-semibold bg-cyan-950/20">⚡ 100ms – 150ms (Instant!)</td>
+                      </tr>
+                      <tr>
+                        <td className="p-3.5 font-medium text-white">User Experience</td>
+                        <td className="p-3.5 text-slate-400">Blank loading spinner, sudden block pop-in</td>
+                        <td className="p-3.5 text-slate-200 bg-cyan-950/20">Smooth typing animation word-by-word</td>
+                      </tr>
+                      <tr>
+                        <td className="p-3.5 font-medium text-white">Network Protocol</td>
+                        <td className="p-3.5 text-slate-400">HTTP application/json</td>
+                        <td className="p-3.5 text-slate-200 bg-cyan-950/20">HTTP text/event-stream (SSE)</td>
+                      </tr>
+                      <tr>
+                        <td className="p-3.5 font-medium text-white">Connection Resilience</td>
+                        <td className="p-3.5 text-slate-400">High timeout risk on 1000+ token outputs</td>
+                        <td className="p-3.5 text-slate-200 bg-cyan-950/20">Zero timeouts — persistent chunk pipeline</td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
-                <pre className="font-mono text-xs text-slate-300 overflow-x-auto">
-                  <code>{`// 1. Fetch streaming response
-const response = await fetch("${getBaseUrl()}/chat/completions", {
+              </div>
+
+              {/* 2. Core Protocol Rules */}
+              <div className="space-y-2.5">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  2. How the Token Pipeline Works
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                  <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
+                    <div className="text-amber-400 font-bold flex items-center gap-1.5">
+                      <span className="w-5 h-5 rounded-full bg-amber-400/10 text-amber-400 flex items-center justify-center text-[10px]">1</span>
+                      Client Request
+                    </div>
+                    <p className="text-slate-400 leading-relaxed">
+                      Pass <code className="text-cyan-300 bg-slate-900 px-1 py-0.5 rounded font-mono">"stream": true</code> in your POST body. The server immediately returns a <code className="text-cyan-300 font-mono">200 OK</code> with <code className="text-cyan-300 font-mono">text/event-stream</code>.
+                    </p>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
+                    <div className="text-emerald-400 font-bold flex items-center gap-1.5">
+                      <span className="w-5 h-5 rounded-full bg-emerald-400/10 text-emerald-400 flex items-center justify-center text-[10px]">2</span>
+                      Live SSE Chunks
+                    </div>
+                    <p className="text-slate-400 leading-relaxed">
+                      Tokens are emitted as Server-Sent Events with JSON payloads: <code className="text-cyan-300 font-mono">data: &#123;"choices":[{"delta":{"content":"..."}}]&#125;</code>.
+                    </p>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
+                    <div className="text-indigo-400 font-bold flex items-center gap-1.5">
+                      <span className="w-5 h-5 rounded-full bg-indigo-400/10 text-indigo-400 flex items-center justify-center text-[10px]">3</span>
+                      Stream Termination
+                    </div>
+                    <p className="text-slate-400 leading-relaxed">
+                      When generation finishes, the engine emits the standard sentinel signal: <code className="text-cyan-300 bg-slate-900 px-1 py-0.5 rounded font-mono">data: [DONE]</code> and closes the stream.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. Multi-Language Code Implementations */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  3. Multi-Language Implementation Code
+                </h4>
+
+                {/* Python Streaming */}
+                <div className="bg-slate-950 rounded-xl p-4 border border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-cyan-400 font-mono">Python (Official openai SDK)</span>
+                    <button
+                      onClick={() => copyToClipboard(`from openai import OpenAI
+
+client = OpenAI(
+    base_url="${getBaseUrl()}",
+    api_key="${takaKeys[0]?.keySecret || 'taka_live_your_key'}"
+)
+
+# Enable stream=True
+response = client.chat.completions.create(
+    model="taka-search-v1", # or taka-max-120b, taka-flash-8b
+    messages=[{"role": "user", "content": "Explain quantum computing in 3 sentences."}],
+    stream=True
+)
+
+for chunk in response:
+    print(chunk.choices[0].delta.content or "", end="", flush=True)`, 'stream-py')}
+                      className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] flex items-center gap-1"
+                    >
+                      {copiedId === 'stream-py' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      Copy Python
+                    </button>
+                  </div>
+                  <pre className="font-mono text-xs text-slate-300 overflow-x-auto">
+                    <code>{`from openai import OpenAI
+
+client = OpenAI(
+    base_url="${getBaseUrl()}",
+    api_key="${takaKeys[0]?.keySecret || 'taka_live_your_key'}"
+)
+
+# 1. Enable stream=True
+response = client.chat.completions.create(
+    model="taka-search-v1", # or taka-max-120b, taka-flash-8b
+    messages=[{"role": "user", "content": "Explain quantum computing in 3 sentences."}],
+    stream=True
+)
+
+# 2. Iterate in real-time
+for chunk in response:
+    print(chunk.choices[0].delta.content or "", end="", flush=True)`}</code>
+                  </pre>
+                </div>
+
+                {/* TypeScript / Node.js Streaming */}
+                <div className="bg-slate-950 rounded-xl p-4 border border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-emerald-400 font-mono">TypeScript / Node.js</span>
+                    <button
+                      onClick={() => copyToClipboard(`import OpenAI from "openai";
+
+const client = new OpenAI({
+  baseURL: "${getBaseUrl()}",
+  apiKey: "${takaKeys[0]?.keySecret || 'taka_live_your_key'}",
+});
+
+const stream = await client.chat.completions.create({
+  model: "taka-search-v1",
+  messages: [{ role: "user", content: "Explain quantum computing in 3 sentences." }],
+  stream: true,
+});
+
+for await (const chunk of stream) {
+  process.stdout.write(chunk.choices[0]?.delta?.content || "");
+}`, 'stream-ts')}
+                      className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] flex items-center gap-1"
+                    >
+                      {copiedId === 'stream-ts' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      Copy TypeScript
+                    </button>
+                  </div>
+                  <pre className="font-mono text-xs text-slate-300 overflow-x-auto">
+                    <code>{`import OpenAI from "openai";
+
+const client = new OpenAI({
+  baseURL: "${getBaseUrl()}",
+  apiKey: "${takaKeys[0]?.keySecret || 'taka_live_your_key'}",
+});
+
+const stream = await client.chat.completions.create({
+  model: "taka-search-v1",
+  messages: [{ role: "user", content: "Explain quantum computing in 3 sentences." }],
+  stream: true,
+});
+
+for await (const chunk of stream) {
+  process.stdout.write(chunk.choices[0]?.delta?.content || "");
+}`}</code>
+                  </pre>
+                </div>
+
+                {/* Frontend React / JavaScript Fetch Streaming */}
+                <div className="bg-slate-950 rounded-xl p-4 border border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-indigo-400 font-mono">Frontend (React / Next.js / Vanilla JS)</span>
+                    <button
+                      onClick={() => copyToClipboard(`const response = await fetch("${getBaseUrl()}/chat/completions", {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
@@ -1108,14 +1263,13 @@ const response = await fetch("${getBaseUrl()}/chat/completions", {
   body: JSON.stringify({
     model: "taka-search-v1",
     messages: [{ role: "user", content: "Tell me a short story." }],
-    stream: true // <-- Activate Streaming
+    stream: true
   })
 });
 
-// 2. Read live token chunks
 const reader = response.body.getReader();
 const decoder = new TextDecoder();
-let resultText = "";
+let outputText = "";
 
 while (true) {
   const { done, value } = await reader.read();
@@ -1125,12 +1279,51 @@ while (true) {
   for (const line of lines) {
     if (line.startsWith("data: ") && line !== "data: [DONE]") {
       const data = JSON.parse(line.slice(6));
-      resultText += data.choices[0]?.delta?.content || "";
-      console.log(resultText); // Updates live on every token!
+      outputText += data.choices[0]?.delta?.content || "";
+      console.log(outputText); // Updates UI dynamically!
+    }
+  }
+}`, 'stream-fe')}
+                      className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] flex items-center gap-1"
+                    >
+                      {copiedId === 'stream-fe' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      Copy Frontend Code
+                    </button>
+                  </div>
+                  <pre className="font-mono text-xs text-slate-300 overflow-x-auto">
+                    <code>{`// Consume Live Token Stream directly in React / Browser
+const response = await fetch("${getBaseUrl()}/chat/completions", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "Authorization": "Bearer ${takaKeys[0]?.keySecret || 'taka_live_your_key'}"
+  },
+  body: JSON.stringify({
+    model: "taka-search-v1",
+    messages: [{ role: "user", content: "Tell me a short story." }],
+    stream: true
+  })
+});
+
+const reader = response.body.getReader();
+const decoder = new TextDecoder();
+let outputText = "";
+
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+  const chunk = decoder.decode(value);
+  const lines = chunk.split("\\n");
+  for (const line of lines) {
+    if (line.startsWith("data: ") && line !== "data: [DONE]") {
+      const data = JSON.parse(line.slice(6));
+      outputText += data.choices[0]?.delta?.content || "";
+      console.log(outputText); // Updates UI dynamically!
     }
   }
 }`}</code>
-                </pre>
+                  </pre>
+                </div>
               </div>
             </div>
 
