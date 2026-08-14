@@ -147,6 +147,9 @@ export default function TakaPortal() {
   const [isOneTimePass, setIsOneTimePass] = useState(true);
   const [isCreatingPasscode, setIsCreatingPasscode] = useState(false);
 
+  // Modal State: Select Model (Mobile & Desktop)
+  const [showModelModal, setShowModelModal] = useState(false);
+
   // Active Code Tab in Docs
   const [docCodeTab, setDocCodeTab] = useState<'python' | 'node' | 'curl' | 'nextjs'>('python');
 
@@ -614,13 +617,19 @@ export async function POST(req: Request) {
             </div>
           )}
 
-          {/* Model & Search Mode Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-2xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-sm">
+          {/* Model & Search Mode Bar (Mobile & Desktop Responsive) */}
+          <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 p-2.5 rounded-2xl bg-slate-900/80 border border-slate-800 backdrop-blur-md shadow-sm">
             {/* Search Engine Mode Toggle */}
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setIsSearchMode(!isSearchMode)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
+                onClick={() => {
+                  const newSearch = !isSearchMode;
+                  setIsSearchMode(newSearch);
+                  if (newSearch && !selectedModel.startsWith('taka-search')) {
+                    setSelectedModel('taka-search-v1');
+                  }
+                }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all active:scale-95 ${
                   isSearchMode
                     ? 'bg-amber-500/20 border border-amber-500/60 text-amber-300 shadow-sm'
                     : 'bg-slate-950 border border-slate-800 text-slate-400 hover:text-slate-200'
@@ -631,31 +640,23 @@ export async function POST(req: Request) {
               </button>
 
               <span className="text-[11px] text-slate-500 hidden md:inline">
-                {isSearchMode ? 'Grounding answers with real-time web retrieval' : 'Direct neural reasoning'}
+                {isSearchMode ? 'Real-time web retrieval' : 'Direct neural reasoning'}
               </span>
             </div>
 
-            {/* Model Selector (When not in search mode) */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-400 hidden sm:inline">Model:</span>
-              <select
-                disabled={isSearchMode}
-                value={isSearchMode ? 'taka-search-v1' : selectedModel}
-                onChange={(e) => setSelectedModel(e.target.value)}
-                className={`bg-slate-950 border rounded-xl px-3 py-1.5 text-xs font-mono focus:outline-none transition-all ${
-                  isSearchMode
-                    ? 'border-amber-500/30 text-amber-300 opacity-90 cursor-not-allowed'
-                    : 'border-slate-800 text-cyan-300 focus:border-cyan-500'
-                }`}
+            {/* Interactive Model Selector Button (Works on all mobile devices!) */}
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setShowModelModal(true)}
+                className="px-3 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-900 border border-slate-700/80 text-cyan-300 text-xs font-mono font-medium flex items-center gap-2 transition-all shadow-inner active:scale-95"
+                title="Tap to Change AI Model"
               >
-                <option value="taka-search-v1">🔍 taka-search-v1 (Autonomous Web Agent)</option>
-                <option value="taka-search-mini">🔍 taka-search-mini (Fast Web Agent)</option>
-                <option value="taka-max-120b">🧠 taka-max-120b (Ultra Intelligence 120B)</option>
-                <option value="taka-ultra-70b">🚀 taka-ultra-70b (Versatile Engine 70B)</option>
-                <option value="taka-qwen-27b">💻 taka-qwen-27b (Code & Math Powerhouse 27B)</option>
-                <option value="taka-pro-20b">⚡ taka-pro-20b (High-Speed Dense 20B)</option>
-                <option value="taka-flash-8b">⚡ taka-flash-8b (Sub-100ms Instant)</option>
-              </select>
+                <Cpu className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                <span className="truncate max-w-[140px] sm:max-w-none">{selectedModel}</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-950/80 border border-cyan-800 text-cyan-400 ml-1">
+                  Change ▾
+                </span>
+              </button>
             </div>
           </div>
 
@@ -1880,6 +1881,83 @@ export async function POST(req: Request) {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 4: SELECT AI MODEL (MOBILE & DESKTOP OPTIMIZED) */}
+      {showModelModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-[#0b101e] border border-slate-800 rounded-t-3xl sm:rounded-2xl max-w-xl w-full p-5 sm:p-6 space-y-4 shadow-2xl max-h-[85vh] overflow-y-auto animate-in slide-in-from-bottom sm:zoom-in-95 duration-200">
+            <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+                  <Cpu className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Select AI Neural Engine</h3>
+                  <p className="text-[11px] text-slate-400">Choose the optimal model for your query or search task</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowModelModal(false)}
+                className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center text-xs transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-2.5">
+              {TAKA_MODELS.map((m) => {
+                const isSelected = selectedModel === m.id;
+                return (
+                  <button
+                    key={m.id}
+                    onClick={() => {
+                      setSelectedModel(m.id);
+                      if (m.isSearchEngine) {
+                        setIsSearchMode(true);
+                      }
+                      setShowModelModal(false);
+                    }}
+                    className={`w-full p-3.5 rounded-xl border text-left flex items-start justify-between gap-3 transition-all active:scale-[0.98] ${
+                      isSelected
+                        ? 'bg-cyan-950/40 border-cyan-500/80 shadow-md ring-1 ring-cyan-500/50'
+                        : 'bg-slate-950 hover:bg-slate-900 border-slate-800 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        {m.isSearchEngine ? (
+                          <Search className="w-4 h-4 text-amber-400 shrink-0" />
+                        ) : (
+                          <Cpu className="w-4 h-4 text-cyan-400 shrink-0" />
+                        )}
+                        <span className={`font-mono text-xs font-bold ${isSelected ? 'text-cyan-300' : 'text-white'}`}>
+                          {m.id}
+                        </span>
+                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-900 border border-slate-800 text-slate-400 font-sans">
+                          {m.category}
+                        </span>
+                      </div>
+                      <div className="text-xs text-slate-300 font-medium">{m.name}</div>
+                      <p className="text-[11px] text-slate-500 leading-snug">{m.description}</p>
+                    </div>
+
+                    <div className="flex flex-col items-end gap-1.5 shrink-0">
+                      <span className="text-[10px] font-mono text-slate-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                        {m.contextWindow}
+                      </span>
+                      {isSelected && (
+                        <span className="text-[10px] font-bold text-cyan-400 flex items-center gap-1">
+                          <Check className="w-3.5 h-3.5" /> Active
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
