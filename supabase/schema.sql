@@ -1,5 +1,5 @@
 -- =========================================================
--- TAKA AI GATEWAY - COMPLETE ENTERPRISE SCHEMA
+-- TAKA AI GATEWAY - COMPLETE DATABASE SCHEMA
 -- =========================================================
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS groq_keys (
 CREATE INDEX IF NOT EXISTS idx_groq_keys_selection 
 ON groq_keys (is_active, cooldown_until, last_used_at);
 
--- 2. Table: taka_api_keys (Custom Client API Keys for Developers)
+-- 2. Table: taka_api_keys (Custom Developer Client Keys)
 CREATE TABLE IF NOT EXISTS taka_api_keys (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     key_secret TEXT UNIQUE NOT NULL,
@@ -32,7 +32,51 @@ CREATE TABLE IF NOT EXISTS taka_api_keys (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 3. Atomic Compute Node Rotator
+-- 3. Table: access_codes (One-Time and Admin Access Codes for Web UI)
+CREATE TABLE IF NOT EXISTS access_codes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    code TEXT UNIQUE NOT NULL,
+    label TEXT DEFAULT 'Access Pass',
+    is_used BOOLEAN DEFAULT FALSE,
+    is_one_time BOOLEAN DEFAULT TRUE,
+    expires_at TIMESTAMPTZ DEFAULT NULL,
+    used_at TIMESTAMPTZ DEFAULT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 4. Atomic Function: Verify and consume one-time access code
+CREATE OR REPLACE FUNCTION verify_and_consume_access_code(input_code TEXT)
+RETURNS TABLE (
+    valid BOOLEAN,
+    code_label TEXT,
+    is_one_time BOOLEAN
+) AS $$
+DECLARE
+    found_record RECORD;
+BEGIN
+    SELECT * INTO found_record
+    FROM access_codes
+    WHERE code = TRIM(input_code)
+      AND (is_used = FALSE OR is_one_time = FALSE)
+      AND (expires_at IS NULL OR expires_at > NOW())
+    LIMIT 1;
+
+    IF found_record.id IS NOT NULL THEN
+        IF found_record.is_one_time = TRUE THEN
+            UPDATE access_codes
+            SET is_used = TRUE,
+                used_at = NOW()
+            WHERE id = found_record.id;
+        END IF;
+
+        RETURN QUERY SELECT TRUE, found_record.label, found_record.is_one_time;
+    ELSE
+        RETURN QUERY SELECT FALSE, ''::TEXT, FALSE;
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+-- 5. Atomic Compute Node Rotator
 CREATE OR REPLACE FUNCTION get_next_groq_key()
 RETURNS TABLE (
     id UUID,
@@ -57,7 +101,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- 4. Cooldown Handler
+-- 6. Cooldown Handler
 CREATE OR REPLACE FUNCTION mark_key_cooldown(
     target_key_id UUID,
     cooldown_seconds INT DEFAULT 60
@@ -70,3 +114,11 @@ BEGIN
     WHERE id = target_key_id;
 END;
 $$ LANGUAGE plpgsql;
+
+-- 7. Seed Initial One-Time Access Passcodes
+INSERT INTO access_codes (code, label, is_one_time) VALUES
+    ('TAKA-VIP-8899', 'VIP One-Time Pass', TRUE),
+    ('TAKA-VIP-7722', 'VIP One-Time Pass', TRUE),
+    ('TAKA-VIP-3344', 'VIP One-Time Pass', TRUE),
+    ('TAKA-MASTER-2026', 'Master Admin Pass', FALSE)
+ON CONFLICT (code) DO NOTHING;

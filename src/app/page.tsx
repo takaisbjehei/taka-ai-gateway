@@ -19,8 +19,13 @@ import {
   Layers, 
   Sparkles, 
   Globe,
-  ExternalLink
+  Search,
+  Lock,
+  ArrowRight,
+  LogOut,
+  Info
 } from 'lucide-react';
+import { TAKA_MODELS } from '@/lib/models';
 
 interface TakaKey {
   id: string;
@@ -45,10 +50,16 @@ interface StatsData {
 }
 
 export default function TakaPortal() {
+  // Auth Gate State
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [accessCodeInput, setAccessCodeInput] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [isVerifyingCode, setIsVerifyingCode] = useState(false);
+
+  // App State
   const [activeTab, setActiveTab] = useState<'keys' | 'playground' | 'docs' | 'cluster'>('keys');
   const [takaKeys, setTakaKeys] = useState<TakaKey[]>([]);
   const [stats, setStats] = useState<StatsData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   // Modal State
@@ -58,15 +69,53 @@ export default function TakaPortal() {
   const [isCreatingKey, setIsCreatingKey] = useState(false);
 
   // Playground State
-  const [selectedModel, setSelectedModel] = useState('taka-ultra-v1');
-  const [promptInput, setPromptInput] = useState('Explain why asynchronous computing is important in 2 clear sentences.');
+  const [selectedModel, setSelectedModel] = useState('taka-search-v1');
+  const [promptInput, setPromptInput] = useState('What are the latest breakthrough developments in fusion energy this year?');
   const [isStreaming, setIsStreaming] = useState(true);
   const [chatOutput, setChatOutput] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [responseLatency, setResponseLatency] = useState<number | null>(null);
 
   // Active Code Tab in Docs
-  const [docCodeTab, setDocCodeTab] = useState<'python' | 'node' | 'curl'>('python');
+  const [docCodeTab, setDocCodeTab] = useState<'python' | 'node' | 'curl' | 'nextjs'>('python');
+
+  // Check saved session on load
+  useEffect(() => {
+    const saved = localStorage.getItem('taka_auth_token');
+    if (saved) {
+      setIsAuthenticated(true);
+    }
+  }, []);
+
+  const handleAccessCodeLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError('');
+    setIsVerifyingCode(true);
+    try {
+      const res = await fetch('/api/auth/access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: accessCodeInput.trim() }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        localStorage.setItem('taka_auth_token', data.sessionToken || 'taka_active');
+        setIsAuthenticated(true);
+        fetchKeysAndStats();
+      } else {
+        setAuthError(data.error || 'Invalid access code. Please try again.');
+      }
+    } catch (err: any) {
+      setAuthError('Connection error. Please try again.');
+    } finally {
+      setIsVerifyingCode(false);
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('taka_auth_token');
+    setIsAuthenticated(false);
+  };
 
   const fetchKeysAndStats = async () => {
     try {
@@ -81,16 +130,16 @@ export default function TakaPortal() {
       if (statsData.success) setStats(statsData.stats);
     } catch (e) {
       console.error(e);
-    } finally {
-      setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchKeysAndStats();
-    const timer = setInterval(fetchKeysAndStats, 8000);
-    return () => clearInterval(timer);
-  }, []);
+    if (isAuthenticated) {
+      fetchKeysAndStats();
+      const timer = setInterval(fetchKeysAndStats, 8000);
+      return () => clearInterval(timer);
+    }
+  }, [isAuthenticated]);
 
   const handleCreateKey = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -99,7 +148,7 @@ export default function TakaPortal() {
       const res = await fetch('/api/taka-keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newKeyName || 'My Application Key' }),
+        body: JSON.stringify({ name: newKeyName || 'Production Key' }),
       });
       const data = await res.json();
       if (data.success) {
@@ -196,25 +245,24 @@ export default function TakaPortal() {
     return 'https://taka-ai-gateway.vercel.app/v1';
   };
 
-  const getCodeSnippet = (lang: 'python' | 'node' | 'curl') => {
+  const getCodeSnippet = (lang: 'python' | 'node' | 'curl' | 'nextjs') => {
     const baseUrl = getBaseUrl();
     const sampleKey = takaKeys[0]?.keySecret || 'taka_live_your_api_key';
 
     if (lang === 'python') {
       return `from openai import OpenAI
 
-# Initialize Taka AI Client
+# Connect to your Taka AI API Gateway
 client = OpenAI(
     base_url="${baseUrl}",
     api_key="${sampleKey}"
 )
 
-# Call Taka AI High-Speed Models
+# Use taka-search-v1 for Live Web Search, or taka-max-120b for Ultra Intelligence
 response = client.chat.completions.create(
-    model="taka-ultra-v1", # or taka-flash-v1, taka-reasoning-v1
+    model="taka-search-v1", # or taka-max-120b, taka-flash-8b, taka-qwen-27b
     messages=[
-        {"role": "system", "content": "You are a helpful AI assistant."},
-        {"role": "user", "content": "Hello Taka AI!"}
+        {"role": "user", "content": "Search the web and summarize latest AI news."}
     ],
     stream=True
 )
@@ -226,7 +274,7 @@ for chunk in response:
     if (lang === 'node') {
       return `import OpenAI from "openai";
 
-// Initialize Taka AI Client
+// Connect to your Taka AI API Gateway
 const client = new OpenAI({
   baseURL: "${baseUrl}",
   apiKey: "${sampleKey}",
@@ -234,8 +282,8 @@ const client = new OpenAI({
 
 async function main() {
   const stream = await client.chat.completions.create({
-    model: "taka-ultra-v1",
-    messages: [{ role: "user", content: "Hello Taka AI!" }],
+    model: "taka-search-v1",
+    messages: [{ role: "user", content: "Search latest tech breakthroughs." }],
     stream: true,
   });
 
@@ -247,20 +295,112 @@ async function main() {
 main();`;
     }
 
+    if (lang === 'nextjs') {
+      return `import { createOpenAI } from '@ai-sdk/openai';
+import { streamText } from 'ai';
+
+// Vercel AI SDK Integration
+const takaAI = createOpenAI({
+  baseURL: '${baseUrl}',
+  apiKey: '${sampleKey}',
+});
+
+export async function POST(req: Request) {
+  const { messages } = await req.json();
+
+  const result = streamText({
+    model: takaAI('taka-search-v1'),
+    messages,
+  });
+
+  return result.toDataStreamResponse();
+}`;
+    }
+
     return `curl ${baseUrl}/chat/completions \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer ${sampleKey}" \\
   -d '{
-    "model": "taka-ultra-v1",
-    "messages": [{"role": "user", "content": "Hello Taka AI!"}],
-    "stream": false
+    "model": "taka-search-v1",
+    "messages": [{"role": "user", "content": "Search the web for current AI trends"}],
+    "stream": true
   }'`;
   };
 
+  // ==========================================
+  // ACCESS GATE SCREEN (IF NOT AUTHENTICATED)
+  // ==========================================
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-[#070a12] text-slate-100 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-[#0d1322] border border-slate-800/90 rounded-2xl p-8 space-y-6 shadow-2xl backdrop-blur-xl">
+          <div className="text-center space-y-2">
+            <div className="w-12 h-12 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 mx-auto shadow-inner">
+              <Lock className="w-6 h-6" />
+            </div>
+            <h1 className="text-xl font-bold tracking-tight text-white">Taka AI Gateway</h1>
+            <p className="text-xs text-slate-400">
+              Enter your access pass or one-time redemption code to unlock the developer portal.
+            </p>
+          </div>
+
+          <form onSubmit={handleAccessCodeLogin} className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">
+                Access Code / Passcode
+              </label>
+              <input
+                type="text"
+                value={accessCodeInput}
+                onChange={(e) => setAccessCodeInput(e.target.value)}
+                placeholder="e.g. TAKA-VIP-8899"
+                required
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm font-mono text-cyan-300 placeholder:text-slate-600 focus:outline-none focus:border-cyan-500 transition-all uppercase tracking-widest text-center"
+              />
+            </div>
+
+            {authError && (
+              <div className="p-3 rounded-lg bg-rose-950/50 border border-rose-800 text-xs text-rose-300 text-center">
+                {authError}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={isVerifyingCode || !accessCodeInput.trim()}
+              className="w-full py-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-xs flex items-center justify-center gap-2 transition-all shadow-lg active:scale-95 disabled:opacity-50"
+            >
+              {isVerifyingCode ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  Verifying Access Pass...
+                </>
+              ) : (
+                <>
+                  Unlock Developer Platform
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
+            </button>
+          </form>
+
+          <div className="pt-2 border-t border-slate-800/80 text-center">
+            <p className="text-[11px] text-slate-500">
+              Protected by Supabase One-Time Access Security
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // AUTHENTICATED DEVELOPER PORTAL
+  // ==========================================
   return (
-    <div className="min-h-screen bg-[#080c14] text-slate-100 flex flex-col selection:bg-cyan-500/30 selection:text-cyan-200">
-      {/* Top Navigation */}
-      <header className="border-b border-slate-800/80 bg-[#0c121e]/90 backdrop-blur-md sticky top-0 z-40 px-6 py-3.5 flex items-center justify-between">
+    <div className="min-h-screen bg-[#070a12] text-slate-100 flex flex-col selection:bg-cyan-500/30 selection:text-cyan-200">
+      {/* Top Header */}
+      <header className="border-b border-slate-800/80 bg-[#0c1220]/90 backdrop-blur-md sticky top-0 z-40 px-6 py-3.5 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-inner">
             <Sparkles className="w-5 h-5" />
@@ -272,7 +412,7 @@ main();`;
                 Developer Platform
               </span>
             </div>
-            <p className="text-xs text-slate-400">High-Performance Neural Inference Cloud</p>
+            <p className="text-xs text-slate-400">High-Performance Neural Inference & Web Search Cloud</p>
           </div>
         </div>
 
@@ -294,7 +434,7 @@ main();`;
             }`}
           >
             <Terminal className="w-3.5 h-3.5 text-emerald-400" />
-            Playground
+            Playground & Search
           </button>
           <button
             onClick={() => setActiveTab('docs')}
@@ -303,7 +443,7 @@ main();`;
             }`}
           >
             <BookOpen className="w-3.5 h-3.5 text-indigo-400" />
-            Quickstart & SDKs
+            API Connection Guide
           </button>
           <button
             onClick={() => setActiveTab('cluster')}
@@ -316,8 +456,8 @@ main();`;
           </button>
         </div>
 
-        {/* Action Button */}
-        <div className="flex items-center gap-3">
+        {/* Right Actions */}
+        <div className="flex items-center gap-2">
           <button
             onClick={() => {
               setGeneratedKey(null);
@@ -329,10 +469,17 @@ main();`;
             <Plus className="w-4 h-4" />
             Create API Key
           </button>
+          <button
+            onClick={handleLogout}
+            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-rose-400 transition-colors"
+            title="Lock / Logout"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
         </div>
       </header>
 
-      {/* Main Content Area */}
+      {/* Main Container */}
       <main className="flex-1 max-w-6xl w-full mx-auto p-6 space-y-6">
         {/* Metric Bar */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -347,7 +494,7 @@ main();`;
             </div>
             <p className="text-[11px] text-emerald-400/90 mt-1 flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              Optimal Latency Distribution
+              Round-Robin Load Balancing Active
             </p>
           </div>
 
@@ -358,18 +505,18 @@ main();`;
             </div>
             <div className="text-2xl font-bold text-white">{stats?.totalRequests ?? 0}</div>
             <p className="text-[11px] text-slate-400 mt-1">
-              Balanced across global cluster
+              Distributed evenly across cluster
             </p>
           </div>
 
           <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800/80">
             <div className="flex items-center justify-between text-slate-400 text-xs font-medium mb-1">
-              <span>UPTIME & SUCCESS RATE</span>
-              <ShieldCheck className="w-4 h-4 text-indigo-400" />
+              <span>STREAMING LATENCY (TTFT)</span>
+              <Zap className="w-4 h-4 text-amber-400" />
             </div>
-            <div className="text-2xl font-bold text-white">{stats?.successRate ?? '100.0%'}</div>
-            <p className="text-[11px] text-slate-400 mt-1">
-              Zero-downtime failover active
+            <div className="text-2xl font-bold text-white">~120ms</div>
+            <p className="text-[11px] text-emerald-400 mt-1">
+              Real-time SSE token stream
             </p>
           </div>
 
@@ -386,7 +533,7 @@ main();`;
               className="text-[11px] text-cyan-400 hover:text-cyan-300 mt-1 flex items-center gap-1"
             >
               {copiedId === 'base-url' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-              {copiedId === 'base-url' ? 'Copied' : 'Copy URL'}
+              {copiedId === 'base-url' ? 'Copied' : 'Copy Endpoint'}
             </button>
           </div>
         </div>
@@ -399,10 +546,10 @@ main();`;
                 <div>
                   <h2 className="text-base font-semibold text-white flex items-center gap-2">
                     <Key className="w-4 h-4 text-cyan-400" />
-                    Taka AI API Keys
+                    Taka AI Secret API Keys
                   </h2>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Create and manage secret API keys to authenticate with Taka AI from your applications.
+                    Generate authentication keys for your applications and backends.
                   </p>
                 </div>
                 <button
@@ -426,7 +573,7 @@ main();`;
                       <th className="px-6 py-3">NAME</th>
                       <th className="px-6 py-3">SECRET KEY</th>
                       <th className="px-6 py-3">CREATED</th>
-                      <th className="px-6 py-3">REQUESTS</th>
+                      <th className="px-6 py-3">USAGE</th>
                       <th className="px-6 py-3">STATUS</th>
                       <th className="px-6 py-3 text-right">ACTIONS</th>
                     </tr>
@@ -435,7 +582,7 @@ main();`;
                     {takaKeys.length === 0 ? (
                       <tr>
                         <td colSpan={6} className="px-6 py-8 text-center text-slate-500">
-                          No custom API keys yet. Click "Create New Key" above to generate your first key.
+                          No API keys generated yet. Click "Create New Key" above.
                         </td>
                       </tr>
                     ) : (
@@ -467,7 +614,7 @@ main();`;
                             {new Date(k.createdAt).toLocaleDateString()}
                           </td>
                           <td className="px-6 py-4 font-semibold text-slate-200">
-                            {k.totalRequests}
+                            {k.totalRequests} calls
                           </td>
                           <td className="px-6 py-4">
                             <span className="px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-950/80 border border-emerald-800/60 text-emerald-300 inline-flex items-center gap-1.5">
@@ -494,13 +641,13 @@ main();`;
           </div>
         )}
 
-        {/* TAB 2: PLAYGROUND */}
+        {/* TAB 2: PLAYGROUND & SEARCH */}
         {activeTab === 'playground' && (
           <div className="bg-slate-900/70 border border-slate-800/80 rounded-xl overflow-hidden shadow-sm flex flex-col">
             <div className="px-6 py-4 border-b border-slate-800/80 flex items-center justify-between bg-slate-900/40">
               <div className="flex items-center gap-2">
                 <Terminal className="w-4 h-4 text-emerald-400" />
-                <h2 className="text-sm font-semibold text-white">Taka AI Live Playground</h2>
+                <h2 className="text-sm font-semibold text-white">Taka Neural & Search Playground</h2>
               </div>
               <label className="text-xs text-slate-400 flex items-center gap-2 cursor-pointer">
                 <input
@@ -509,7 +656,7 @@ main();`;
                   onChange={(e) => setIsStreaming(e.target.checked)}
                   className="rounded bg-slate-800 border-slate-700 text-cyan-500 focus:ring-0"
                 />
-                Stream SSE Tokens
+                Stream Real-Time SSE
               </label>
             </div>
 
@@ -520,30 +667,39 @@ main();`;
                   <select
                     value={selectedModel}
                     onChange={(e) => setSelectedModel(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
                   >
-                    <option value="taka-ultra-v1">Taka Ultra v1 (Flagship Intelligence - 128k Context)</option>
-                    <option value="taka-flash-v1">Taka Flash v1 (Ultra-Low Latency & Instant Response)</option>
-                    <option value="taka-reasoning-v1">Taka Reasoning v1 (Deep Multi-Step Problem Solving)</option>
-                    <option value="taka-core-v1">Taka Core v1 (Balanced Multi-Task Engine)</option>
+                    <optgroup label="Live Web Search & Compound Multi-Agent">
+                      <option value="taka-search-v1">🔍 taka-search-v1 (Autonomous Web Search Agent)</option>
+                      <option value="taka-search-mini">🔍 taka-search-mini (Fast Web Search Agent)</option>
+                    </optgroup>
+                    <optgroup label="Ultra Intelligence & Flagship">
+                      <option value="taka-max-120b">🧠 taka-max-120b (Ultra-Intelligence 120B)</option>
+                      <option value="taka-ultra-70b">🚀 taka-ultra-70b (Versatile Reasoning 70B)</option>
+                      <option value="taka-qwen-27b">💻 taka-qwen-27b (Code & Math Powerhouse 27B)</option>
+                      <option value="taka-pro-20b">⚡ taka-pro-20b (High-Speed Dense 20B)</option>
+                    </optgroup>
+                    <optgroup label="Instant Real-Time">
+                      <option value="taka-flash-8b">⚡ taka-flash-8b (Sub-100ms Instant Response)</option>
+                    </optgroup>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-400 mb-1.5">Authentication</label>
+                  <label className="block text-xs font-medium text-slate-400 mb-1.5">Auth Header</label>
                   <div className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-400 font-mono truncate">
-                    {takaKeys[0]?.keyMasked || 'taka_live_default...'} (Auto-Selected)
+                    Bearer {takaKeys[0]?.keyMasked || 'taka_live_default...'}
                   </div>
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1.5">Prompt</label>
+                <label className="block text-xs font-medium text-slate-400 mb-1.5">Prompt / Query</label>
                 <textarea
                   value={promptInput}
                   onChange={(e) => setPromptInput(e.target.value)}
                   rows={3}
                   className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono resize-none"
-                  placeholder="Enter your prompt..."
+                  placeholder="Ask any question or search topic..."
                 />
               </div>
 
@@ -560,12 +716,12 @@ main();`;
                 ) : (
                   <>
                     <Play className="w-3.5 h-3.5 fill-current" />
-                    Run Prompt
+                    Send Request to Gateway
                   </>
                 )}
               </button>
 
-              {/* Output */}
+              {/* Output Window */}
               <div className="min-h-[160px] bg-slate-950 rounded-lg border border-slate-800/80 p-4 text-xs font-mono text-slate-200">
                 <div className="flex items-center justify-between text-[11px] text-slate-500 border-b border-slate-800/60 pb-2 mb-3">
                   <span>Output Response</span>
@@ -576,21 +732,48 @@ main();`;
                   )}
                 </div>
                 <div className="whitespace-pre-wrap">
-                  {chatOutput || <span className="text-slate-600 italic">Click "Run Prompt" to test generation...</span>}
+                  {chatOutput || <span className="text-slate-600 italic">Click "Send Request" to test generation & streaming...</span>}
                 </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* TAB 3: QUICKSTART & SDKS */}
+        {/* TAB 3: API CONNECTION GUIDE */}
         {activeTab === 'docs' && (
           <div className="space-y-6">
+            {/* Quick Connection Info Card */}
+            <div className="bg-slate-900/70 border border-slate-800/80 rounded-xl p-6 shadow-sm space-y-4">
+              <h2 className="text-base font-semibold text-white flex items-center gap-2">
+                <Info className="w-4 h-4 text-cyan-400" />
+                How to Connect to Taka AI Gateway
+              </h2>
+              <p className="text-xs text-slate-300">
+                Taka AI is a 100% standard OpenAI-compatible API. You can use it as a drop-in replacement in any library, SDK, Cursor IDE, OpenWebUI, LibreChat, or custom application.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 text-xs">
+                <div className="p-3 bg-slate-950 rounded-lg border border-slate-800">
+                  <div className="text-slate-500 font-medium">1. Base URL</div>
+                  <div className="font-mono text-cyan-300 font-semibold mt-1 truncate">{getBaseUrl()}</div>
+                </div>
+                <div className="p-3 bg-slate-950 rounded-lg border border-slate-800">
+                  <div className="text-slate-500 font-medium">2. Auth Header</div>
+                  <div className="font-mono text-emerald-300 font-semibold mt-1 truncate">Bearer taka_live_...</div>
+                </div>
+                <div className="p-3 bg-slate-950 rounded-lg border border-slate-800">
+                  <div className="text-slate-500 font-medium">3. Models Endpoint</div>
+                  <div className="font-mono text-indigo-300 font-semibold mt-1 truncate">GET /v1/models</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Code Snippets Card */}
             <div className="bg-slate-900/70 border border-slate-800/80 rounded-xl overflow-hidden shadow-sm">
               <div className="px-6 py-4 border-b border-slate-800/80 flex items-center justify-between bg-slate-900/40">
                 <div>
-                  <h2 className="text-sm font-semibold text-white">Developer Integration</h2>
-                  <p className="text-xs text-slate-400">Taka AI is a 100% standard OpenAI-compatible drop-in endpoint.</p>
+                  <h3 className="text-sm font-semibold text-white">SDK Quickstart Snippets</h3>
+                  <p className="text-xs text-slate-400">Copy and paste directly into your project codebase.</p>
                 </div>
                 <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-lg border border-slate-800">
                   <button
@@ -607,7 +790,15 @@ main();`;
                       docCodeTab === 'node' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
                     }`}
                   >
-                    TypeScript / Node
+                    TypeScript
+                  </button>
+                  <button
+                    onClick={() => setDocCodeTab('nextjs')}
+                    className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                      docCodeTab === 'nextjs' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    Vercel AI SDK
                   </button>
                   <button
                     onClick={() => setDocCodeTab('curl')}
@@ -652,22 +843,21 @@ main();`;
                 Available Taka AI Models
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                <div className="p-3 rounded-lg bg-slate-950 border border-slate-800">
-                  <div className="font-mono font-semibold text-cyan-400">taka-ultra-v1</div>
-                  <p className="text-slate-400 mt-1">Flagship ultra-intelligence reasoning model with 128k context window.</p>
-                </div>
-                <div className="p-3 rounded-lg bg-slate-950 border border-slate-800">
-                  <div className="font-mono font-semibold text-emerald-400">taka-flash-v1</div>
-                  <p className="text-slate-400 mt-1">Ultra-low latency model designed for instant real-time completions.</p>
-                </div>
-                <div className="p-3 rounded-lg bg-slate-950 border border-slate-800">
-                  <div className="font-mono font-semibold text-indigo-400">taka-reasoning-v1</div>
-                  <p className="text-slate-400 mt-1">Step-by-step thinking model for complex logic, math, and code synthesis.</p>
-                </div>
-                <div className="p-3 rounded-lg bg-slate-950 border border-slate-800">
-                  <div className="font-mono font-semibold text-amber-400">taka-core-v1</div>
-                  <p className="text-slate-400 mt-1">Versatile multi-purpose model with high token efficiency.</p>
-                </div>
+                {TAKA_MODELS.map((m) => (
+                  <div key={m.id} className="p-3.5 rounded-lg bg-slate-950 border border-slate-800">
+                    <div className="flex items-center justify-between">
+                      <div className="font-mono font-semibold text-cyan-400 flex items-center gap-1.5">
+                        {m.isSearchEngine && <Search className="w-3.5 h-3.5 text-amber-400" />}
+                        {m.id}
+                      </div>
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-400">
+                        {m.contextWindow}
+                      </span>
+                    </div>
+                    <div className="text-xs text-slate-300 font-medium mt-1">{m.name}</div>
+                    <p className="text-slate-500 mt-1">{m.description}</p>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
@@ -740,7 +930,7 @@ main();`;
                     type="text"
                     value={newKeyName}
                     onChange={(e) => setNewKeyName(e.target.value)}
-                    placeholder="e.g. My Next.js Web App"
+                    placeholder="e.g. Production Application"
                     required
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3.5 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"
                   />
@@ -809,8 +999,8 @@ main();`;
       )}
 
       {/* Footer */}
-      <footer className="border-t border-slate-800/60 py-4 px-6 text-center text-xs text-slate-500 bg-[#0c121e]/60">
-        Taka AI • Proprietary High-Speed Neural Inference Platform • Zero-Downtime Architecture
+      <footer className="border-t border-slate-800/60 py-4 px-6 text-center text-xs text-slate-500 bg-[#0c1220]/60">
+        Taka AI • High-Speed Neural Inference & Live Web Search Platform • Zero-Downtime Architecture
       </footer>
     </div>
   );

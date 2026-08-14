@@ -1,20 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getNextGroqKey, markKeyCooldown } from '@/lib/key-manager';
 import { validateAndTrackTakaKey } from '@/lib/taka-keys';
+import { MODEL_MAP } from '@/lib/models';
 
 export const runtime = 'edge';
-
-// Model translation map for Taka AI proprietary branding
-const MODEL_MAP: Record<string, string> = {
-  'taka-ultra-v1': 'llama-3.3-70b-versatile',
-  'taka-ultra': 'llama-3.3-70b-versatile',
-  'taka-flash-v1': 'llama-3.1-8b-instant',
-  'taka-flash': 'llama-3.1-8b-instant',
-  'taka-reasoning-v1': 'deepseek-r1-distill-llama-70b',
-  'taka-reasoning': 'deepseek-r1-distill-llama-70b',
-  'taka-core-v1': 'mixtral-8x7b-32768',
-  'taka-core': 'mixtral-8x7b-32768',
-};
 
 function corsHeaders() {
   return {
@@ -47,7 +36,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const requestedModel = body.model || 'taka-ultra-v1';
+  const requestedModel = body.model || 'taka-ultra-70b';
   const backendModel = MODEL_MAP[requestedModel] || requestedModel;
 
   // Clone payload with backend model name

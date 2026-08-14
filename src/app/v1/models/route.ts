@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { TAKA_MODELS } from '@/lib/models';
 
 export const runtime = 'edge';
 
@@ -18,58 +19,24 @@ export async function OPTIONS() {
 }
 
 export async function GET() {
-  const takaModels = [
-    {
-      id: 'taka-ultra-v1',
-      object: 'model',
-      created: 1715000000,
-      owned_by: 'taka-ai',
-      permission: [],
-      root: 'taka-ultra-v1',
-      description: 'Taka AI Flagship Ultra-Intelligence Model (128k Context)',
-    },
-    {
-      id: 'taka-flash-v1',
-      object: 'model',
-      created: 1715000000,
-      owned_by: 'taka-ai',
-      permission: [],
-      root: 'taka-flash-v1',
-      description: 'Taka AI Ultra-Low Latency Instant Model',
-    },
-    {
-      id: 'taka-reasoning-v1',
-      object: 'model',
-      created: 1715000000,
-      owned_by: 'taka-ai',
-      permission: [],
-      root: 'taka-reasoning-v1',
-      description: 'Taka AI Deep Reasoning & Problem Solving Model',
-    },
-    {
-      id: 'taka-core-v1',
-      object: 'model',
-      created: 1715000000,
-      owned_by: 'taka-ai',
-      permission: [],
-      root: 'taka-core-v1',
-      description: 'Taka AI Balanced Multi-Task Model',
-    },
-    {
-      id: 'taka-voice-v1',
-      object: 'model',
-      created: 1715000000,
-      owned_by: 'taka-ai',
-      permission: [],
-      root: 'taka-voice-v1',
-      description: 'Taka AI Speech-to-Text Audio Model',
-    },
-  ];
+  const modelsData = TAKA_MODELS.map((m) => ({
+    id: m.id,
+    object: 'model',
+    created: 1715000000,
+    owned_by: 'taka-ai',
+    permission: [],
+    root: m.id,
+    name: m.name,
+    category: m.category,
+    description: m.description,
+    context_window: m.contextWindow,
+    is_search_engine: Boolean(m.isSearchEngine),
+  }));
 
   return NextResponse.json(
     {
       object: 'list',
-      data: takaModels,
+      data: modelsData,
     },
     { headers: corsHeaders() }
   );
