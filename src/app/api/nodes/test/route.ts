@@ -29,9 +29,9 @@ export async function GET(req: NextRequest) {
         if (res.ok) {
           return {
             id: k.id,
-            nodeIndex: index + 1,
-            label: k.label || `Node ${index + 1}`,
-            maskedKey: k.maskedKey,
+            nodeIndex: nodeNum,
+            label: `Taka Core Node 0${nodeNum}`,
+            maskedKey: `taka_core_matrix_0${nodeNum}`,
             status: k.isInCooldown ? 'cooldown' : 'online',
             statusCode: res.status,
             latencyMs,
@@ -43,9 +43,9 @@ export async function GET(req: NextRequest) {
         } else {
           return {
             id: k.id,
-            nodeIndex: index + 1,
-            label: k.label || `Node ${index + 1}`,
-            maskedKey: k.maskedKey,
+            nodeIndex: nodeNum,
+            label: `Taka Core Node 0${nodeNum}`,
+            maskedKey: `taka_core_matrix_0${nodeNum}`,
             status: res.status === 429 ? 'cooldown' : 'error',
             statusCode: res.status,
             latencyMs,
@@ -59,9 +59,9 @@ export async function GET(req: NextRequest) {
       } catch (err: any) {
         return {
           id: k.id,
-          nodeIndex: index + 1,
-          label: k.label || `Node ${index + 1}`,
-          maskedKey: k.maskedKey,
+          nodeIndex: nodeNum,
+          label: `Taka Core Node 0${nodeNum}`,
+          maskedKey: `taka_core_matrix_0${nodeNum}`,
           status: 'error',
           statusCode: 500,
           latencyMs: Date.now() - startTime,

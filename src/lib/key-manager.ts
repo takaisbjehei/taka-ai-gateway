@@ -14,9 +14,8 @@ export interface KeyRecord {
   lastUsedAt: string | null;
 }
 
-function maskKey(key: string): string {
-  if (!key || key.length < 14) return key;
-  return `${key.slice(0, 8)}...${key.slice(-6)}`;
+function maskKey(key: string, idx = 1): string {
+  return `taka_core_matrix_0${idx}`;
 }
 
 // In-Memory Fallback State (for ultra-fast performance & offline/local use)
@@ -171,14 +170,14 @@ export async function getAllKeysStats(): Promise<KeyRecord[]> {
         .order('created_at', { ascending: true });
 
       if (!error && data && data.length > 0) {
-        return data.map((k) => {
+        return data.map((k, idx) => {
           const cooldownDate = k.cooldown_until ? new Date(k.cooldown_until).getTime() : 0;
           const isInCooldown = cooldownDate > now;
           return {
             id: k.id,
-            apiKey: k.api_key,
-            maskedKey: maskKey(k.api_key),
-            label: k.label || 'Taka Key',
+            apiKey: '',
+            maskedKey: maskKey(k.api_key, idx + 1),
+            label: k.label || `Taka Node ${idx + 1}`,
             isActive: k.is_active,
             cooldownUntil: k.cooldown_until,
             isInCooldown,
@@ -196,13 +195,13 @@ export async function getAllKeysStats(): Promise<KeyRecord[]> {
 
   // Fallback to memory
   initMemoryKeys();
-  return inMemoryKeys.map((k) => {
+  return inMemoryKeys.map((k, idx) => {
     const isInCooldown = (k.cooldownUntil || 0) > now;
     return {
       id: k.id,
-      apiKey: k.apiKey,
-      maskedKey: maskKey(k.apiKey),
-      label: k.label,
+      apiKey: '',
+      maskedKey: maskKey(k.apiKey, idx + 1),
+      label: `Taka Node ${idx + 1}`,
       isActive: k.isActive,
       cooldownUntil: k.cooldownUntil ? new Date(k.cooldownUntil).toISOString() : null,
       isInCooldown,
