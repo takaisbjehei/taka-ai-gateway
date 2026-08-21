@@ -186,6 +186,9 @@ export default function TakaPortal() {
   const [nodeSummary, setNodeSummary] = useState<NodeClusterSummary | null>(null);
   const [isTestingNodes, setIsTestingNodes] = useState(false);
   const [isResettingCooldowns, setIsResettingCooldowns] = useState(false);
+  const [scanProgress, setScanProgress] = useState(0);
+  const [currentScanningNodeIndex, setCurrentScanningNodeIndex] = useState<number | null>(null);
+  const [scanStatusText, setScanStatusText] = useState<string | null>(null);
 
 
 
@@ -257,19 +260,75 @@ export default function TakaPortal() {
   const [testingSingleNodeIndex, setTestingSingleNodeIndex] = useState<number | null>(null);
 
   const fetchNodeTests = async () => {
+    if (isTestingNodes) return;
     setIsTestingNodes(true);
-    try {
-      const res = await fetch('/api/nodes/test');
-      const data = await res.json();
-      if (data.success) {
-        setNodeList(data.nodes);
-        setNodeSummary(data.summary);
+    setScanProgress(0);
+    setScanStatusText('Initializing Taka Cluster Diagnostic Matrix...');
+
+    const total = 8;
+    const updatedNodes: NodeTestItem[] = [];
+
+    for (let i = 1; i <= total; i++) {
+      setCurrentScanningNodeIndex(i);
+      setScanStatusText(`Diagnosing Taka Node 0${i} [taka_core_matrix_0${i}]...`);
+      setScanProgress(Math.round(((i - 1) / total) * 100));
+
+      // Satisfying visual scan delay so progress is clearly seen
+      await new Promise((r) => setTimeout(r, 220));
+
+      try {
+        const res = await fetch(`/api/nodes/test?nodeIndex=${i}`);
+        const data = await res.json();
+        if (data.success && data.nodes && data.nodes.length > 0) {
+          const testedNode = data.nodes[0];
+          updatedNodes.push(testedNode);
+          setNodeList((prev) => {
+            const clone = [...prev];
+            const foundIdx = clone.findIndex((n) => n.nodeIndex === i);
+            if (foundIdx >= 0) {
+              clone[foundIdx] = testedNode;
+            } else {
+              clone.push(testedNode);
+            }
+            return clone;
+          });
+          setScanStatusText(`Node 0${i} Response Received • HTTP ${testedNode.statusCode || 200} (${testedNode.latencyMs}ms)`);
+        }
+      } catch (err) {
+        console.error(`Failed testing node ${i}:`, err);
       }
-    } catch (err) {
-      console.error('Failed to test nodes:', err);
-    } finally {
-      setIsTestingNodes(false);
+
+      setScanProgress(Math.round((i / total) * 100));
+      await new Promise((r) => setTimeout(r, 180));
     }
+
+    // Refresh summary stats
+    const online = updatedNodes.filter((n) => n.status === 'online' && !n.isInCooldown).length;
+    const cooldown = updatedNodes.filter((n) => n.status === 'cooldown' || n.isInCooldown).length;
+    const errCount = updatedNodes.filter((n) => n.status === 'error').length;
+    const avgLat = Math.round(
+      updatedNodes.reduce((acc, n) => acc + (n.latencyMs || 0), 0) / Math.max(1, updatedNodes.length)
+    );
+
+    setNodeSummary({
+      totalNodes: total,
+      onlineNodes: online,
+      cooldownNodes: cooldown,
+      errorNodes: errCount,
+      avgLatencyMs: avgLat || 120,
+      healthStatus: online > 0 ? 'OPERATIONAL' : 'DEGRADED',
+    });
+
+    setCurrentScanningNodeIndex(null);
+    setScanProgress(100);
+    setScanStatusText(`✨ Matrix Diagnostic Complete • ${online}/${total} Nodes Online (~${avgLat || 120}ms latency)`);
+    setIsTestingNodes(false);
+
+    // Keep banner visible for satisfaction, then fade
+    setTimeout(() => {
+      setScanProgress(0);
+      setScanStatusText(null);
+    }, 4500);
   };
 
   const testSingleNode = async (nodeIndex: number) => {
@@ -1720,6 +1779,46 @@ export async function POST(req: Request) {
                     </div>
                   </div>
 
+                  {/* HIGH-TECH DIAGNOSTIC SCANNING & PROGRESS BAR */}
+                  {(isTestingNodes || scanProgress > 0 || scanStatusText) && (
+                    <div className="p-4 rounded-2xl bg-gradient-to-r from-slate-950 via-[#071322] to-slate-950 border border-cyan-500/40 shadow-xl shadow-cyan-950/40 space-y-3 transition-all duration-300">
+                      <div className="flex items-center justify-between text-xs flex-wrap gap-2">
+                        <div className="flex items-center gap-2.5">
+                          <span className="relative flex h-3 w-3">
+                            {isTestingNodes && (
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-80"></span>
+                            )}
+                            <span className={`relative inline-flex rounded-full h-3 w-3 ${isTestingNodes ? 'bg-cyan-400' : 'bg-emerald-400'}`}></span>
+                          </span>
+                          <span className="font-mono font-bold text-white tracking-wide flex items-center gap-2">
+                            <Activity className={`w-3.5 h-3.5 ${isTestingNodes ? 'animate-spin text-cyan-400' : 'text-emerald-400'}`} />
+                            {scanStatusText || 'Taka Neural Matrix Diagnostics'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 font-mono">
+                          <span className="text-[11px] text-slate-400">
+                            {currentScanningNodeIndex ? `[ TESTING NODE 0${currentScanningNodeIndex} / 08 ]` : scanProgress === 100 ? '[ SYNC COMPLETE ]' : '[ STANDBY ]'}
+                          </span>
+                          <span className="px-2 py-0.5 rounded-md bg-cyan-950/80 border border-cyan-800 text-cyan-300 font-mono text-[11px] font-bold shadow-sm">
+                            {scanProgress}%
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Glowing Animated Progress Bar */}
+                      <div className="w-full bg-slate-950 h-2.5 rounded-full overflow-hidden p-0.5 border border-slate-800 relative">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-cyan-500 via-indigo-500 to-emerald-400 transition-all duration-300 relative shadow-[0_0_15px_rgba(6,182,212,0.9)]"
+                          style={{ width: `${Math.max(4, scanProgress)}%` }}
+                        >
+                          {isTestingNodes && (
+                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/60 to-transparent animate-pulse" />
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* 8-Node Live Cluster Matrix */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
                     {(nodeList.length > 0 ? nodeList : Array.from({ length: 8 }).map((_, idx) => ({
@@ -1735,39 +1834,55 @@ export async function POST(req: Request) {
                       totalRequests: 0,
                       failedRequests: 0,
                     }))).map((node) => {
+                      const isCurrentlyScanning = currentScanningNodeIndex === node.nodeIndex || testingSingleNodeIndex === node.nodeIndex;
                       const isOnline = node.status === 'online' && !node.isInCooldown;
                       const isCooldown = node.status === 'cooldown' || node.isInCooldown;
 
                       return (
                         <div
                           key={node.id || node.nodeIndex}
-                          className={`p-4 rounded-2xl bg-slate-950 border transition-all ${
-                            isOnline
+                          className={`p-4 rounded-2xl bg-slate-950 border transition-all duration-300 relative overflow-hidden ${
+                            isCurrentlyScanning
+                              ? 'border-cyan-400 ring-2 ring-cyan-500/50 shadow-[0_0_25px_rgba(6,182,212,0.35)] scale-[1.02]'
+                              : isOnline
                               ? 'border-slate-800 hover:border-cyan-500/50 shadow-sm'
                               : isCooldown
                               ? 'border-amber-800/80 bg-amber-950/10 shadow-sm'
                               : 'border-rose-800/80 bg-rose-950/10'
                           }`}
                         >
-                          <div className="flex items-center justify-between">
+                          {/* Active Scan Laser Effect */}
+                          {isCurrentlyScanning && (
+                            <div className="absolute inset-0 bg-gradient-to-b from-cyan-500/10 via-transparent to-cyan-500/5 pointer-events-none animate-pulse" />
+                          )}
+
+                          <div className="flex items-center justify-between relative z-10">
                             <div className="flex items-center gap-2">
                               <span className={`w-2 h-2 rounded-full ${
-                                isOnline ? 'bg-emerald-400 animate-pulse' : isCooldown ? 'bg-amber-400' : 'bg-rose-400'
+                                isCurrentlyScanning
+                                  ? 'bg-cyan-400 animate-ping'
+                                  : isOnline
+                                  ? 'bg-emerald-400 animate-pulse'
+                                  : isCooldown
+                                  ? 'bg-amber-400'
+                                  : 'bg-rose-400'
                               }`} />
                               <span className="text-xs font-bold text-white">Node 0{node.nodeIndex}</span>
                             </div>
                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
-                              isOnline
+                              isCurrentlyScanning
+                                ? 'bg-cyan-950 text-cyan-300 border-cyan-700 animate-pulse'
+                                : isOnline
                                 ? 'bg-emerald-950 text-emerald-400 border-emerald-800'
                                 : isCooldown
                                 ? 'bg-amber-950 text-amber-400 border-amber-800'
                                 : 'bg-rose-950 text-rose-400 border-rose-800'
                             }`}>
-                              {isOnline ? '200 OK' : isCooldown ? `${node.cooldownRemainingSeconds}s Cooldown` : 'Error'}
+                              {isCurrentlyScanning ? '⚡ Probing...' : isOnline ? '200 OK' : isCooldown ? `${node.cooldownRemainingSeconds}s Cooldown` : 'Error'}
                             </span>
                           </div>
 
-                          <div className="mt-3 space-y-1.5 text-[11px]">
+                          <div className="mt-3 space-y-1.5 text-[11px] relative z-10">
                             <div className="flex justify-between text-slate-400">
                               <span>Core Matrix ID:</span>
                               <span className="font-mono text-cyan-300 font-medium">{node.maskedKey || `taka_core_matrix_0${node.nodeIndex}`}</span>
@@ -1775,9 +1890,15 @@ export async function POST(req: Request) {
                             <div className="flex justify-between text-slate-400">
                               <span>Ping Latency:</span>
                               <span className={`font-mono font-semibold ${
-                                node.latencyMs < 150 ? 'text-emerald-400' : node.latencyMs < 300 ? 'text-amber-400' : 'text-rose-400'
+                                isCurrentlyScanning
+                                  ? 'text-cyan-400 animate-pulse'
+                                  : node.latencyMs < 150
+                                  ? 'text-emerald-400'
+                                  : node.latencyMs < 300
+                                  ? 'text-amber-400'
+                                  : 'text-rose-400'
                               }`}>
-                                {node.latencyMs ? `${node.latencyMs}ms` : '~105ms'}
+                                {isCurrentlyScanning ? 'Measuring...' : node.latencyMs ? `${node.latencyMs}ms` : '~105ms'}
                               </span>
                             </div>
                             <div className="flex justify-between text-slate-400">
@@ -1786,14 +1907,18 @@ export async function POST(req: Request) {
                             </div>
                           </div>
 
-                          <div className="mt-3 pt-2.5 border-t border-slate-900 flex items-center justify-end">
+                          <div className="mt-3 pt-2.5 border-t border-slate-900 flex items-center justify-end relative z-10">
                             <button
                               onClick={() => testSingleNode(node.nodeIndex)}
-                              disabled={testingSingleNodeIndex === node.nodeIndex}
-                              className="w-full py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-cyan-300 hover:text-cyan-200 text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                              disabled={isTestingNodes || testingSingleNodeIndex === node.nodeIndex}
+                              className={`w-full py-1.5 rounded-lg border text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-all disabled:opacity-50 ${
+                                isCurrentlyScanning
+                                  ? 'bg-cyan-950 border-cyan-600 text-cyan-200 shadow-sm'
+                                  : 'bg-slate-900 hover:bg-slate-800 border-slate-800 text-cyan-300 hover:text-cyan-200'
+                              }`}
                             >
-                              <Play className={`w-3 h-3 ${testingSingleNodeIndex === node.nodeIndex ? 'animate-spin' : ''}`} />
-                              {testingSingleNodeIndex === node.nodeIndex ? 'Testing...' : `Test Node 0${node.nodeIndex}`}
+                              <Play className={`w-3 h-3 ${isCurrentlyScanning ? 'animate-spin text-cyan-400' : ''}`} />
+                              {isCurrentlyScanning ? 'Probing...' : `Test Node 0${node.nodeIndex}`}
                             </button>
                           </div>
                         </div>
