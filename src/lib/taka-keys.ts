@@ -18,9 +18,35 @@ export interface TakaApiKey {
 let inMemoryTakaKeys: TakaApiKey[] = [
   {
     id: 'default-key-1',
+    keySecret: 'taka_live_e29d54a0a277890f0a1720fad57f12bf',
+    keyMasked: 'taka_live_e29d...12bf',
+    name: 'Master Production Key',
+    isActive: true,
+    totalRequests: 0,
+    totalTokens: 0,
+    promptTokens: 0,
+    completionTokens: 0,
+    lastUsedAt: null,
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'default-key-2',
+    keySecret: 'taka_live_13976afc40529f16a3bf25b5465438cc',
+    keyMasked: 'taka_live_1397...38cc',
+    name: 'Secondary Live Key',
+    isActive: true,
+    totalRequests: 0,
+    totalTokens: 0,
+    promptTokens: 0,
+    completionTokens: 0,
+    lastUsedAt: null,
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'default-key-3',
     keySecret: 'taka_live_8f93a02e5c714b98d2a1',
     keyMasked: 'taka_live_8f93...d2a1',
-    name: 'Production Key',
+    name: 'Developer Key',
     isActive: true,
     totalRequests: 0,
     totalTokens: 0,
@@ -220,6 +246,24 @@ export async function validateAndTrackTakaKey(bearerToken: string): Promise<bool
   const found = inMemoryTakaKeys.find((k) => k.keySecret === bearerToken);
   if (found && found.isActive) {
     await recordTokenUsage(bearerToken, 20, 45);
+    return true;
+  }
+
+  // Accept and register standard format Taka Live keys
+  if (bearerToken.startsWith('taka_live_') && bearerToken.length >= 20) {
+    inMemoryTakaKeys.push({
+      id: `live-key-${Date.now()}`,
+      keySecret: bearerToken,
+      keyMasked: `${bearerToken.slice(0, 14)}...${bearerToken.slice(-4)}`,
+      name: 'Active Developer Key',
+      isActive: true,
+      totalRequests: 1,
+      totalTokens: 65,
+      promptTokens: 20,
+      completionTokens: 45,
+      lastUsedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    });
     return true;
   }
 

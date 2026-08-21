@@ -135,13 +135,13 @@ export default function TakaPortal() {
       id: 'welcome-msg',
       role: 'assistant',
       content: "Welcome. I am **Taka AI**, the autonomous super-intelligence system conceived and engineered by **Takadori**.\n\nPowered by our multi-cluster neural matrix, hypersonic 120B reasoning cores, and live orbital web reconnaissance. What breakthrough are we building today?",
-      model: 'taka-search-v1',
+      model: 'taka-flash-8b',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     }
   ]);
   const [userInput, setUserInput] = useState('');
-  const [selectedModel, setSelectedModel] = useState('taka-search-v1');
-  const [isSearchMode, setIsSearchMode] = useState(true);
+  const [selectedModel, setSelectedModel] = useState('taka-flash-8b');
+  const [isSearchMode, setIsSearchMode] = useState(false);
   const [isStreaming, setIsStreaming] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [sessionTokens, setSessionTokens] = useState(0);
@@ -268,6 +268,8 @@ export default function TakaPortal() {
     }
   };
 
+  const [testingSingleNodeIndex, setTestingSingleNodeIndex] = useState<number | null>(null);
+
   const fetchNodeTests = async () => {
     setIsTestingNodes(true);
     try {
@@ -281,6 +283,31 @@ export default function TakaPortal() {
       console.error('Failed to test nodes:', err);
     } finally {
       setIsTestingNodes(false);
+    }
+  };
+
+  const testSingleNode = async (nodeIndex: number) => {
+    setTestingSingleNodeIndex(nodeIndex);
+    try {
+      const res = await fetch(`/api/nodes/test?nodeIndex=${nodeIndex}`);
+      const data = await res.json();
+      if (data.success && data.nodes && data.nodes.length > 0) {
+        const updatedNode = data.nodes[0];
+        setNodeList((prev) => {
+          const clone = [...prev];
+          const foundIdx = clone.findIndex((n) => n.nodeIndex === nodeIndex);
+          if (foundIdx >= 0) {
+            clone[foundIdx] = updatedNode;
+          } else {
+            clone.push(updatedNode);
+          }
+          return clone;
+        });
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setTestingSingleNodeIndex(null);
     }
   };
 
@@ -597,6 +624,24 @@ export default function TakaPortal() {
           stream: isStreaming,
         }),
       });
+
+      if (!response.ok) {
+        const errJson = await response.json().catch(() => ({}));
+        const errMsg = errJson.error?.message || `Inference error: HTTP ${response.status}`;
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMsgId
+              ? {
+                  ...msg,
+                  content: `⚠️ **Taka AI Gateway**: ${errMsg}`,
+                  latencyMs: Date.now() - startTime,
+                }
+              : msg
+          )
+        );
+        setIsGenerating(false);
+        return;
+      }
 
       if (isStreaming) {
         if (!response.body) throw new Error('No stream body received');
@@ -1910,6 +1955,17 @@ export async function POST(req: Request) {
                               <span>Failover Strategy:</span>
                               <span className="text-cyan-300 font-medium">Auto Round-Robin</span>
                             </div>
+                          </div>
+
+                          <div className="mt-3 pt-2.5 border-t border-slate-900 flex items-center justify-end">
+                            <button
+                              onClick={() => testSingleNode(node.nodeIndex)}
+                              disabled={testingSingleNodeIndex === node.nodeIndex}
+                              className="w-full py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-cyan-300 hover:text-cyan-200 text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                            >
+                              <Play className={`w-3 h-3 ${testingSingleNodeIndex === node.nodeIndex ? 'animate-spin' : ''}`} />
+                              {testingSingleNodeIndex === node.nodeIndex ? 'Testing...' : `Test Node 0${node.nodeIndex}`}
+                            </button>
                           </div>
                         </div>
                       );

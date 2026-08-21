@@ -4,12 +4,18 @@ import { TAKA_MODELS } from '@/lib/models';
 
 export const runtime = 'edge';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const keys = await getAllKeysStats();
+    const { searchParams } = new URL(req.url);
+    const targetIndex = searchParams.get('nodeIndex');
     
-    // Test each key in parallel with a fast probe
-    const testPromises = keys.map(async (k, index) => {
+    const keysToTest = targetIndex 
+      ? keys.filter((_, idx) => idx + 1 === parseInt(targetIndex, 10))
+      : keys;
+
+    const testPromises = keysToTest.map(async (k, index) => {
+      const nodeNum = targetIndex ? parseInt(targetIndex, 10) : index + 1;
       const startTime = Date.now();
       try {
         const res = await fetch('https://api.groq.com/openai/v1/models', {
