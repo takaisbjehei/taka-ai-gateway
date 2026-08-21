@@ -7,7 +7,8 @@ export const runtime = 'edge';
 export async function GET() {
   try {
     const keys = await getAllKeysStats();
-    return NextResponse.json({ success: true, keys });
+    const sanitized = keys.map((k) => ({ ...k, apiKey: '' }));
+    return NextResponse.json({ success: true, keys: sanitized });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }

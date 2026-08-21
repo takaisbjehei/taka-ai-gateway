@@ -175,7 +175,7 @@ export async function getAllKeysStats(): Promise<KeyRecord[]> {
           const isInCooldown = cooldownDate > now;
           return {
             id: k.id,
-            apiKey: '',
+            apiKey: k.api_key,
             maskedKey: maskKey(k.api_key, idx + 1),
             label: k.label || `Taka Node ${idx + 1}`,
             isActive: k.is_active,
@@ -199,7 +199,7 @@ export async function getAllKeysStats(): Promise<KeyRecord[]> {
     const isInCooldown = (k.cooldownUntil || 0) > now;
     return {
       id: k.id,
-      apiKey: '',
+      apiKey: k.apiKey,
       maskedKey: maskKey(k.apiKey, idx + 1),
       label: `Taka Node ${idx + 1}`,
       isActive: k.isActive,
